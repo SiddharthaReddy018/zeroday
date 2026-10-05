@@ -1,4 +1,4 @@
-package io.oxalpha.liveness.core;
+package liveness.core;
 
 import java.util.Objects;
 

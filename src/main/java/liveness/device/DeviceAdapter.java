@@ -1,6 +1,6 @@
-package io.oxalpha.liveness.device;
+package liveness.device;
 
-import io.oxalpha.liveness.core.FaceFrame;
+import liveness.core.FaceFrame;
 
 /**
  * Abstraction over frame sources: MDS/SBI device, host webcam,

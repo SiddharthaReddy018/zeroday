@@ -1,4 +1,4 @@
-package io.oxalpha.liveness.core;
+package liveness.core;
 
 /**
  * Quality hint from the device or pre-screen: GOOD for bona-fide-looking

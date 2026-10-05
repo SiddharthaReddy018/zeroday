@@ -1,4 +1,4 @@
-package io.oxalpha.liveness.device;
+package liveness.device;
 
 /** Raised by DeviceAdapter on open/close/capture failures. */
 public class DeviceException extends Exception {

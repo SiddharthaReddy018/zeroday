@@ -1,0 +1,83 @@
+package liveness.flow;
+
+/**
+ * Events that drive state transitions in the liveness state machine.
+ * Each event maps to one or more rows in the 16.2 transition table.
+ */
+public enum LivenessEvent {
+
+    // Row 1: IDLE -> DEVICE_CHECK
+    START_CAPTURE,
+
+    // Row 2: DEVICE_CHECK -> POSITIONING
+    DEVICE_READY,
+
+    // Row 3: DEVICE_CHECK -> DEVICE_ERROR (DEVICE_UNAVAILABLE)
+    DEVICE_UNAVAILABLE,
+
+    // Row 4: POSITIONING -> PASSIVE
+    QUALITY_OK,
+
+    // Row 5: POSITIONING -> RETRY_AVAILABLE
+    POSITIONING_TIMEOUT,
+
+    // Row 6: PASSIVE -> FINAL_CAPTURE
+    CLEAR_BONA_FIDE,
+
+    // Row 7: PASSIVE -> CHALLENGE_PROMPT
+    UNCERTAIN,
+
+    // Row 8: PASSIVE -> BLOCKED_ATTACK
+    CLEAR_ATTACK,
+
+    // Row 9: PASSIVE -> POSITIONING
+    QUALITY_DROPPED,
+
+    // Row 10: PASSIVE -> RETRY_AVAILABLE
+    ENGINE_ERROR,
+
+    // Row 11: CHALLENGE_PROMPT -> CHALLENGE_WAIT
+    PROMPT_ISSUED,
+
+    // Row 12: CHALLENGE_WAIT -> CHALLENGE_PROMPT (more challenges required)
+    ACTION_CONFIRMED_MORE,
+
+    // Row 13: CHALLENGE_WAIT -> FINAL_CAPTURE (minimum challenges met)
+    ACTION_CONFIRMED_DONE,
+
+    // Row 14: CHALLENGE_WAIT -> RETRY_AVAILABLE
+    CHALLENGE_TIMEOUT,
+
+    // Row 15: CHALLENGE_WAIT -> BLOCKED_ATTACK
+    CHALLENGE_PAD_FLAG,
+
+    // Row 16: FINAL_CAPTURE -> VERIFYING_FINAL
+    RCAPTURE_RETURNED,
+
+    // Row 17: FINAL_CAPTURE -> DEVICE_ERROR (DEVICE_UNAVAILABLE)
+    RCAPTURE_FAILURE,
+
+    // Row 18: VERIFYING_FINAL -> SUCCESS
+    COMMIT_CHECKS_PASS,
+
+    // Row 19: VERIFYING_FINAL -> RETRY_AVAILABLE
+    SAME_FACE_FAIL,
+
+    // Row 20: VERIFYING_FINAL -> BLOCKED_ATTACK
+    FINAL_PAD_ATTACK,
+
+    // Row 21: VERIFYING_FINAL -> DEVICE_ERROR (INTEGRITY_FAILURE)
+    BINDING_FAILURE,
+
+    // Row 22: RETRY_AVAILABLE -> PASSIVE
+    RETRY_GRANTED,
+
+    // Row 23: RETRY_AVAILABLE -> FAILED_MAX_RETRIES
+    BUDGET_EXHAUSTED,
+
+    // Row 24: any live non-terminal -> DEVICE_ERROR (DEVICE_UNAVAILABLE)
+    DEVICE_DISCONNECT,
+
+    // Row 25: any live non-terminal -> DEVICE_ERROR (INTEGRITY_FAILURE)
+    IAD_FAILURE
+}

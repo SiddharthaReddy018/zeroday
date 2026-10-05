@@ -1,7 +1,7 @@
-package io.oxalpha.liveness.device;
+package liveness.device;
 
-import io.oxalpha.liveness.core.FaceFrame;
-import io.oxalpha.liveness.core.FrameQuality;
+import liveness.core.FaceFrame;
+import liveness.core.FrameQuality;
 
 /**
  * Scriptable test adapter. Scenario enum drives both the returned frame
