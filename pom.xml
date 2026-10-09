@@ -7,7 +7,7 @@
 
   <groupId>io.oxalpha</groupId>
   <artifactId>face-liveness-pad</artifactId>
-  <version>0.1.0-M1</version>
+  <version>0.2.0-M2</version>
   <packaging>jar</packaging>
 
   <name>MOSIP Face Liveness + PAD</name>
@@ -17,9 +17,16 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>11</maven.compiler.release>
     <junit.version>5.9.3</junit.version>
+    <onnxruntime.version>1.16.3</onnxruntime.version>
   </properties>
 
   <dependencies>
+    <!-- ONNX Runtime for MiniFASNet PAD inference (§M2, HANDOFF-2) -->
+    <dependency>
+      <groupId>com.microsoft.onnxruntime</groupId>
+      <artifactId>onnxruntime</artifactId>
+      <version>${onnxruntime.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

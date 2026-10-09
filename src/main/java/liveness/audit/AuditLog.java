@@ -5,13 +5,22 @@ package liveness.audit;
  * <p>
  * Provides typed log methods for common events (state transitions, scores,
  * challenges, etc.). Delegates to the underlying chain.
+ * <p>
+ * No biometric data in logs — scores and event codes only.
  */
 public final class AuditLog {
 
     private final AuditChain chain;
+    private final String sessionId;
 
+    public AuditLog(AuditChain chain, String sessionId) {
+        this.chain = chain;
+        this.sessionId = sessionId;
+    }
+
+    /** No-arg convenience constructor for backward compatibility. */
     public AuditLog() {
-        this.chain = new AuditChain();
+        this(new AuditChain(), "default");
     }
 
     /** Access the underlying chain for verification. */
@@ -19,49 +28,55 @@ public final class AuditLog {
         return chain;
     }
 
-    /** Log a state transition. */
-    public void logTransition(String fromState, String toState, String event) {
+    /** Session ID this log belongs to. */
+    public String sessionId() {
+        return sessionId;
+    }
+
+    /** Log a state transition. Accepts enum states for type safety. */
+    public void logTransition(Object fromState, Object toState, String event) {
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "STATE",
                 "TRANSITION",
-                "from=" + fromState + ",to=" + toState + ",event=" + event));
+                "session=" + sessionId + ",from=" + fromState
+                        + ",to=" + toState + ",event=" + event));
     }
 
-    /** Log a PAD score. */
-    public void logScore(String scorer, int score, double quality) {
+    /** Log a PAD score with a detail string. */
+    public void logScore(String scorer, int score, String detail) {
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "PAD",
                 "SCORE",
-                "scorer=" + scorer + ",score=" + score + ",quality=" + quality));
+                "scorer=" + scorer + ",score=" + score + ",detail=" + detail));
     }
 
-    /** Log a band decision. */
-    public void logBand(String band, int compositeScore, int windowCount) {
+    /** Log a band decision with reason. */
+    public void logBand(String band, int compositeScore, String reason) {
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "PAD",
                 "BAND",
-                "band=" + band + ",composite=" + compositeScore + ",windows=" + windowCount));
+                "band=" + band + ",composite=" + compositeScore + ",reason=" + reason));
     }
 
     /** Log a challenge issue. */
-    public void logChallengeIssued(String challengeId, String action, int sequenceIndex) {
+    public void logChallengeIssued(String action, int sequenceIndex) {
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "CHALLENGE",
                 "ISSUED",
-                "challengeId=" + challengeId + ",action=" + action + ",seq=" + sequenceIndex));
+                "session=" + sessionId + ",action=" + action + ",seq=" + sequenceIndex));
     }
 
     /** Log a challenge result. */
-    public void logChallengeResult(String challengeId, boolean success, long latencyMs) {
+    public void logChallengeResult(String action, boolean success, String detail) {
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "CHALLENGE",
                 "RESULT",
-                "challengeId=" + challengeId + ",success=" + success + ",latencyMs=" + latencyMs));
+                "action=" + action + ",success=" + success + ",detail=" + detail));
     }
 
     /** Log an integrity event. */

@@ -4,16 +4,59 @@ import liveness.core.FaceFrame;
 import liveness.core.FrameQuality;
 
 /**
- * Scriptable test adapter. Scenario enum drives both the returned frame
- * signature and failure behavior. STUB: none for M1 — this is the
- * canonical test device; real camera adapters are M2+.
+ * Scriptable test adapter (§12.5). Scenario enum drives both the returned
+ * frame signature, quality, and failure behavior.
+ * <p>
+ * M2 expansion: all attack types + edge cases from the evaluation design.
+ * <p>
+ * Real-content scenarios replay real image/video fixtures.
+ * Synthetic-metadata scenarios test the sequence monitor.
+ * The scenario label is NEVER encoded in the frame object —
+ * the scorer must not be able to read the answer.
  */
 public final class MockDeviceAdapter implements DeviceAdapter {
 
-    public enum Scenario { BONA_FIDE, PRINT, SCREEN, VIDEO, DISCONNECT }
+    /**
+     * Test scenarios from §12.5.
+     * <p>
+     * Real-content: BONA_FIDE, PRINT, SCREEN, VIDEO, CUTOUT, CURVED_PRINT, MASK_2D.
+     * Synthetic-metadata (injection): FRAME_FREEZE, FRAME_LOOP, VIRTUAL_CAMERA.
+     * Device/edge: DISCONNECT, CORRUPT_FRAME, LOW_FPS, BUSY, TIMEOUT,
+     *              LOW_LIGHT, MULTIPLE_FACES, NO_FACE.
+     */
+    public enum Scenario {
+        // --- Real-content PAD scenarios ---
+        BONA_FIDE,
+        PRINT,
+        SCREEN,
+        VIDEO,
+        CUTOUT,
+        CURVED_PRINT,
+        MASK_2D,
+        MASK_3D,
+        DEEPFAKE,
+
+        // --- Injection / IAD scenarios ---
+        FRAME_FREEZE,
+        FRAME_LOOP,
+        VIRTUAL_CAMERA,
+
+        // --- Device / edge scenarios ---
+        DISCONNECT,
+        CORRUPT_FRAME,
+        LOW_FPS,
+        BUSY,
+        TIMEOUT,
+        LOW_LIGHT,
+        MULTIPLE_FACES,
+        NO_FACE
+    }
 
     private Scenario scenario;
     private boolean open = false;
+    private int frameCounter = 0;
+    private int frozenFrameCount = 0;
+    private static final int LOOP_CYCLE = 10;
 
     public MockDeviceAdapter(Scenario scenario) {
         this.scenario = scenario;
@@ -22,6 +65,8 @@ public final class MockDeviceAdapter implements DeviceAdapter {
     public void setScenario(Scenario s) {
         if (open) throw new IllegalStateException("cannot re-script while open");
         this.scenario = s;
+        this.frameCounter = 0;
+        this.frozenFrameCount = 0;
     }
 
     @Override
@@ -29,7 +74,14 @@ public final class MockDeviceAdapter implements DeviceAdapter {
         if (scenario == Scenario.DISCONNECT) {
             throw new DeviceException("mock: device not connected");
         }
+        if (scenario == Scenario.BUSY) {
+            throw new DeviceException("mock: device busy");
+        }
+        if (scenario == Scenario.TIMEOUT) {
+            throw new DeviceException("mock: device timeout during open");
+        }
         open = true;
+        frameCounter = 0;
     }
 
     @Override
@@ -38,9 +90,12 @@ public final class MockDeviceAdapter implements DeviceAdapter {
         if (scenario == Scenario.DISCONNECT) {
             throw new DeviceException("mock: device lost mid-capture");
         }
-        FrameQuality q = scenario == Scenario.BONA_FIDE
-                ? FrameQuality.GOOD : FrameQuality.SUSPECT;
-        return new FaceFrame(q, frameSignature(scenario), System.identityHashCode(this));
+        if (scenario == Scenario.CORRUPT_FRAME) {
+            throw new DeviceException("mock: corrupt frame data");
+        }
+
+        frameCounter++;
+        return buildFrame(scenario, frameCounter);
     }
 
     @Override
@@ -53,8 +108,124 @@ public final class MockDeviceAdapter implements DeviceAdapter {
         return open;
     }
 
-    /** Opaque per-scenario frame signature the ScoreEngine reads. */
+    /**
+     * Builds a frame appropriate for the scenario.
+     * The scenario label is NOT encoded in the frame — the scorer cannot cheat.
+     */
+    private FaceFrame buildFrame(Scenario s, int seqNum) {
+        long timestamp = System.currentTimeMillis();
+        int deviceId = System.identityHashCode(this);
+
+        switch (s) {
+            case BONA_FIDE:
+                return new FaceFrame(
+                        FrameQuality.GOOD, frameSignature(s), deviceId,
+                        timestamp, seqNum, 1920, 1080, null,
+                        400, 200, 300, 400,
+                        0.0, 0.0, 0.0, 1,
+                        250.0, 128.0, null);
+
+            case PRINT:
+            case SCREEN:
+            case VIDEO:
+            case CUTOUT:
+            case CURVED_PRINT:
+            case MASK_2D:
+            case MASK_3D:
+            case DEEPFAKE:
+                return new FaceFrame(
+                        FrameQuality.SUSPECT, frameSignature(s), deviceId,
+                        timestamp, seqNum, 1920, 1080, null,
+                        400, 200, 280, 380,
+                        2.0, 1.0, 0.5, 1,
+                        180.0, 115.0, null);
+
+            case FRAME_FREEZE:
+                // All frames have identical timestamp to simulate freeze
+                return new FaceFrame(
+                        FrameQuality.GOOD, "FROZEN_HASH", deviceId,
+                        1000000L, seqNum, 1920, 1080, null,
+                        400, 200, 300, 400,
+                        0.0, 0.0, 0.0, 1,
+                        250.0, 128.0, null);
+
+            case FRAME_LOOP:
+                // Cycle through LOOP_CYCLE unique signatures
+                int loopIdx = (seqNum - 1) % LOOP_CYCLE;
+                return new FaceFrame(
+                        FrameQuality.GOOD, "LOOP_" + loopIdx, deviceId,
+                        timestamp, seqNum, 1920, 1080, null,
+                        400, 200, 300, 400,
+                        0.0, 0.0, 0.0, 1,
+                        250.0, 128.0, null);
+
+            case VIRTUAL_CAMERA:
+                // Resolution change mid-stream
+                int width = (seqNum % 2 == 0) ? 1920 : 1280;
+                int height = (seqNum % 2 == 0) ? 1080 : 720;
+                return new FaceFrame(
+                        FrameQuality.GOOD, frameSignature(s), deviceId + 1,
+                        timestamp, seqNum, width, height, null,
+                        400, 200, 300, 400,
+                        0.0, 0.0, 0.0, 1,
+                        250.0, 128.0, null);
+
+            case LOW_LIGHT:
+                return new FaceFrame(
+                        new FrameQuality(false, 0.4, "LOW_LIGHT",
+                                80.0, 25.0, 0.3, 0.0,
+                                200, 0.0, 0.0, 0.0, 1),
+                        frameSignature(s), deviceId,
+                        timestamp, seqNum, 1920, 1080, null,
+                        400, 200, 250, 350,
+                        0.0, 0.0, 0.0, 1,
+                        80.0, 25.0, null);
+
+            case MULTIPLE_FACES:
+                return new FaceFrame(
+                        new FrameQuality(false, 0.2, "MULTIPLE_FACES",
+                                200.0, 128.0, 0.0, 0.0,
+                                200, 0.0, 0.0, 0.0, 3),
+                        frameSignature(s), deviceId,
+                        timestamp, seqNum, 1920, 1080, null,
+                        400, 200, 300, 400,
+                        0.0, 0.0, 0.0, 3,
+                        200.0, 128.0, null);
+
+            case NO_FACE:
+                return new FaceFrame(
+                        new FrameQuality(false, 0.0, "NO_FACE",
+                                200.0, 128.0, 0.0, 0.0,
+                                0, 0.0, 0.0, 0.0, 0),
+                        frameSignature(s), deviceId,
+                        timestamp, seqNum, 1920, 1080, null,
+                        0, 0, 0, 0,
+                        0.0, 0.0, 0.0, 0,
+                        200.0, 128.0, null);
+
+            case LOW_FPS:
+                // Simulate long delay between frames via large timestamp gaps
+                return new FaceFrame(
+                        FrameQuality.GOOD, frameSignature(s), deviceId,
+                        timestamp + (seqNum * 500L), seqNum, 1920, 1080, null,
+                        400, 200, 300, 400,
+                        0.0, 0.0, 0.0, 1,
+                        250.0, 128.0, null);
+
+            default:
+                return new FaceFrame(
+                        FrameQuality.GOOD, frameSignature(s), deviceId,
+                        timestamp, seqNum, 1920, 1080, null,
+                        400, 200, 300, 400,
+                        0.0, 0.0, 0.0, 1,
+                        250.0, 128.0, null);
+        }
+    }
+
+    /** Opaque per-scenario frame signature. */
     public static String frameSignature(Scenario s) {
         return s.name();
     }
+
+    public Scenario scenario() { return scenario; }
 }

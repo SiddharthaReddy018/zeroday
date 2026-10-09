@@ -1,0 +1,259 @@
+package liveness.service;
+
+import liveness.capture.CaptureIntegrityChecker;
+import liveness.capture.DeviceIdentityValidator;
+import liveness.capture.FrameSequenceMonitor;
+import liveness.capture.FreshnessChecker;
+import liveness.capture.SessionTransactionBinder;
+import liveness.challenge.ChallengeGenerator;
+import liveness.core.FaceFrame;
+import liveness.crypto.Attestation;
+import liveness.crypto.EcdsaSignerStub;
+import liveness.device.DeviceAdapter;
+import liveness.device.DeviceException;
+import liveness.engine.MiniFasNetScorer;
+import liveness.engine.SameFaceChecker;
+import liveness.flow.LivenessSession;
+import liveness.flow.LivenessState;
+import liveness.flow.RetryRateLimiter;
+import liveness.flow.SupervisorAuth;
+import liveness.flow.Verdict;
+import liveness.policy.LivenessConfig;
+
+import java.util.Objects;
+
+/**
+ * Service-layer orchestrator for face liveness verification (§22).
+ * <p>
+ * Liveness enforcement lives HERE, NOT in the UI. A UI bug can never
+ * accept a failed liveness result. Inference never runs on the UI thread.
+ * <p>
+ * Three workflows: RESIDENT_REGISTRATION, OPERATOR_AUTH, SUPERVISOR_AUTH.
+ * INFANT variant uses passive-only (no challenges).
+ */
+public final class LivenessService {
+
+    private final LivenessConfig config;
+    private final MiniFasNetScorer padScorer;
+    private final SameFaceChecker sameFaceChecker;
+    private final ChallengeGenerator challengeGen;
+    private final RetryRateLimiter retryLimiter;
+    private final EcdsaSignerStub signer;
+
+    public LivenessService(LivenessConfig config,
+                           MiniFasNetScorer padScorer,
+                           SameFaceChecker sameFaceChecker,
+                           ChallengeGenerator challengeGen,
+                           RetryRateLimiter retryLimiter,
+                           EcdsaSignerStub signer) {
+        this.config = Objects.requireNonNull(config, "config");
+        this.padScorer = Objects.requireNonNull(padScorer, "padScorer");
+        this.sameFaceChecker = Objects.requireNonNull(sameFaceChecker, "sameFaceChecker");
+        this.challengeGen = Objects.requireNonNull(challengeGen, "challengeGen");
+        this.retryLimiter = Objects.requireNonNull(retryLimiter, "retryLimiter");
+        this.signer = Objects.requireNonNull(signer, "signer");
+    }
+
+    /**
+     * Runs the full liveness pipeline on the calling thread.
+     * <p>
+     * Call from a background thread — never from the UI thread.
+     *
+     * @param subjectId     the subject being verified
+     * @param device        the frame source (MDS adapter or mock)
+     * @param machineUserId composite key for rate limiting
+     * @param workflow      which workflow to run
+     * @param callback      UI callback (nullable; dispatches events to UI thread)
+     * @return the liveness result
+     */
+    public LivenessResult performLiveness(String subjectId,
+                                          DeviceAdapter device,
+                                          String machineUserId,
+                                          WorkflowType workflow,
+                                          LivenessCallback callback) {
+        // Build per-session components
+        CaptureIntegrityChecker captureIntegrity = buildCaptureIntegrity();
+        SupervisorAuth supervisor = (workflow == WorkflowType.SUPERVISOR_AUTH)
+                ? new SupervisorAuth() : null;
+
+        LivenessSession session = new LivenessSession(
+                subjectId, device, config, padScorer, sameFaceChecker,
+                challengeGen, retryLimiter, captureIntegrity,
+                signer, supervisor, machineUserId);
+
+        // --- Drive the state machine ---
+        // 1. Start
+        LivenessState state = session.start();
+        notifyState(callback, state);
+
+        // 2. Open device
+        state = session.openDevice();
+        notifyState(callback, state);
+
+        if (state.isTerminal()) {
+            return buildResult(session);
+        }
+
+        // 3. Frame processing loop
+        int framesProcessed = 0;
+        int maxFrames = 300;  // safety limit (~10s at 30fps)
+
+        while (!state.isTerminal() && framesProcessed < maxFrames) {
+            state = session.currentState();
+
+            switch (state) {
+                case POSITIONING:
+                case PASSIVE:
+                case CHALLENGE_WAIT:
+                    // Capture and process a frame
+                    try {
+                        FaceFrame frame = device.captureFrame();
+                        if (frame != null) {
+                            if (callback != null) {
+                                callback.onPreviewFrame(frame.pixelData());
+                            }
+                            state = session.processFrame(frame);
+                            framesProcessed++;
+                            notifyState(callback, state);
+                            if (callback != null) {
+                                callback.onProgress(framesProcessed, config.minQualifyingFrames());
+                            }
+                        }
+                    } catch (DeviceException e) {
+                        state = session.deviceDisconnect();
+                        notifyState(callback, state);
+                    }
+                    break;
+
+                case CHALLENGE_PROMPT:
+                    if (workflow == WorkflowType.INFANT) {
+                        // INFANT: passive-only, skip challenges → treat as bona fide
+                        // This path shouldn't be reached if config disables active for INFANT
+                        break;
+                    }
+                    state = session.issueChallenge();
+                    if (callback != null && session.currentChallenge() != null) {
+                        callback.onChallengePrompt(
+                                session.currentChallenge().action(),
+                                config.challengeTimeoutMs());
+                    }
+                    notifyState(callback, state);
+                    break;
+
+                case FINAL_CAPTURE:
+                    // Trigger RCAPTURE
+                    try {
+                        FaceFrame rcaptureFrame = device.captureFrame();
+                        if (rcaptureFrame != null && rcaptureFrame.hasPixelData()) {
+                            long requestTs = System.currentTimeMillis();
+                            state = session.processRCapture(
+                                    rcaptureFrame.pixelData(),
+                                    session.sessionId(),  // transaction ID
+                                    rcaptureFrame.timestampMs(),
+                                    requestTs);
+                        } else {
+                            state = session.rcaptureFailure();
+                        }
+                        notifyState(callback, state);
+                    } catch (DeviceException e) {
+                        state = session.rcaptureFailure();
+                        notifyState(callback, state);
+                    }
+                    break;
+
+                case RETRY_AVAILABLE:
+                    state = session.attemptRetry();
+                    notifyState(callback, state);
+                    break;
+
+                default:
+                    // Terminal or unexpected state
+                    break;
+            }
+
+            if (state.isTerminal()) {
+                break;
+            }
+        }
+
+        LivenessResult result = buildResult(session);
+        if (callback != null) {
+            callback.onResult(result);
+        }
+        return result;
+    }
+
+    // =========================================================================
+    // Internal helpers
+    // =========================================================================
+
+    private CaptureIntegrityChecker buildCaptureIntegrity() {
+        FrameSequenceMonitor monitor = new FrameSequenceMonitor(
+                config.frameFreezePHashWindowSize(), 33L);  // ~30fps
+        DeviceIdentityValidator deviceId = new DeviceIdentityValidator();
+        FreshnessChecker freshness = new FreshnessChecker(config.rcaptureFreshnessWindowMs());
+        SessionTransactionBinder binder = new SessionTransactionBinder();
+        return new CaptureIntegrityChecker(monitor, deviceId, freshness, binder);
+    }
+
+    private void notifyState(LivenessCallback callback, LivenessState state) {
+        if (callback != null) {
+            callback.onStateChanged(state.name(), liveness.ui.UiMessages.get(state.name()));
+        }
+    }
+
+    private LivenessResult buildResult(LivenessSession session) {
+        return new LivenessResult(
+                session.verdict(),
+                session.attestation(),
+                session.sessionId(),
+                session.retryCount(),
+                session.currentState() != LivenessState.SUCCESS
+                        ? session.currentState().name() : null);
+    }
+
+    // =========================================================================
+    // Inner types
+    // =========================================================================
+
+    /** Workflow types supported by the liveness service. */
+    public enum WorkflowType {
+        RESIDENT_REGISTRATION,
+        OPERATOR_AUTH,
+        SUPERVISOR_AUTH,
+        INFANT
+    }
+
+    /**
+     * Result of a liveness verification session.
+     * <p>
+     * Liveness-failed captures are NEVER saved (constraint #5).
+     */
+    public static final class LivenessResult {
+        private final Verdict verdict;
+        private final Attestation attestation;  // non-null only on SUCCESS
+        private final String sessionId;
+        private final int retryCount;
+        private final String failureReason;     // non-null only on failure
+
+        public LivenessResult(Verdict verdict, Attestation attestation,
+                              String sessionId, int retryCount, String failureReason) {
+            this.verdict = verdict;
+            this.attestation = attestation;
+            this.sessionId = sessionId;
+            this.retryCount = retryCount;
+            this.failureReason = failureReason;
+        }
+
+        public Verdict verdict()           { return verdict; }
+        public Attestation attestation()   { return attestation; }
+        public String sessionId()          { return sessionId; }
+        public int retryCount()            { return retryCount; }
+        public String failureReason()      { return failureReason; }
+
+        /** True only if verdict is PASS and attestation is present. */
+        public boolean isSuccess() {
+            return verdict == Verdict.PASS && attestation != null;
+        }
+    }
+}

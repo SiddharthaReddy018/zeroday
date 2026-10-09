@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MOSIP Face Liveness UI Event Schema",
+  "description": "Shared event schema for Desktop (JavaFX) and Android (Flutter). Events flow from the liveness engine to the UI layer. The UI NEVER calls the engine directly (§9, §22).",
+  "version": "0.2.0-M2",
+
+  "definitions": {
+    "LivenessState": {
+      "type": "string",
+      "enum": [
+        "IDLE", "DEVICE_CHECK", "POSITIONING", "PASSIVE",
+        "CHALLENGE_PROMPT", "CHALLENGE_WAIT",
+        "FINAL_CAPTURE", "VERIFYING_FINAL",
+        "SUCCESS", "RETRY_AVAILABLE",
+        "BLOCKED_ATTACK", "FAILED_MAX_RETRIES", "DEVICE_ERROR"
+      ]
+    },
+    "ChallengeAction": {
+      "type": "string",
+      "enum": [
+        "BLINK", "SMILE",
+        "TURN_LEFT", "TURN_RIGHT",
+        "LOOK_LEFT", "LOOK_RIGHT",
+        "LOOK_UP", "LOOK_DOWN"
+      ]
+    }
+  },
+
+  "type": "object",
+  "required": ["eventType", "timestamp", "sessionId"],
+  "properties": {
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "STATE_CHANGE",
+        "CHALLENGE_ISSUED",
+        "CHALLENGE_RESULT",
+        "QUALITY_GUIDANCE",
+        "CAPTURE_PROGRESS",
+        "SESSION_COMPLETE",
+        "DEVICE_STATUS",
+        "ERROR"
+      ]
+    },
+    "timestamp": {
+      "type": "integer",
+      "description": "Epoch milliseconds"
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object",
+      "description": "Event-type-specific payload",
+      "properties": {
+        "previousState": { "$ref": "#/definitions/LivenessState" },
+        "currentState": { "$ref": "#/definitions/LivenessState" },
+
+        "challengeAction": { "$ref": "#/definitions/ChallengeAction" },
+        "challengeIndex": { "type": "integer" },
+        "challengeTotal": { "type": "integer" },
+        "challengeTimeoutMs": { "type": "integer" },
+
+        "challengeAccepted": { "type": "boolean" },
+        "challengeReason": { "type": "string" },
+
+        "guidanceKey": {
+          "type": "string",
+          "description": "Localisation key for guidance messages",
+          "examples": [
+            "guide.face.none",
+            "guide.face.multiple",
+            "guide.face.too_close",
+            "guide.face.too_far",
+            "guide.quality.blur",
+            "guide.quality.brightness",
+            "guide.pose.operator_adjust_camera"
+          ]
+        },
+
+        "captureProgress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "0.0 to 1.0 progress through passive scoring"
+        },
+
+        "verdict": {
+          "type": "string",
+          "enum": ["PASS", "ATTACK", "MAX_RETRIES", "DEVICE_ERROR", "PENDING"]
+        },
+        "retriesRemaining": { "type": "integer" },
+
+        "messageKey": {
+          "type": "string",
+          "description": "Localisation key for the user-facing message (§9)"
+        },
+
+        "errorCode": {
+          "type": "string",
+          "description": "Machine-readable error code for audit/debug"
+        },
+
+        "deviceConnected": { "type": "boolean" },
+        "deviceSerial": { "type": "string" }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "eventType": "STATE_CHANGE",
+      "timestamp": 1696600000000,
+      "sessionId": "abc-123",
+      "data": {
+        "previousState": "POSITIONING",
+        "currentState": "PASSIVE",
+        "messageKey": "status.liveness.checking"
+      }
+    },
+    {
+      "eventType": "CHALLENGE_ISSUED",
+      "timestamp": 1696600005000,
+      "sessionId": "abc-123",
+      "data": {
+        "challengeAction": "BLINK",
+        "challengeIndex": 1,
+        "challengeTotal": 2,
+        "challengeTimeoutMs": 5000,
+        "messageKey": "challenge.blink"
+      }
+    },
+    {
+      "eventType": "QUALITY_GUIDANCE",
+      "timestamp": 1696600001000,
+      "sessionId": "abc-123",
+      "data": {
+        "guidanceKey": "guide.face.too_far",
+        "currentState": "POSITIONING"
+      }
+    },
+    {
+      "eventType": "SESSION_COMPLETE",
+      "timestamp": 1696600020000,
+      "sessionId": "abc-123",
+      "data": {
+        "verdict": "PASS",
+        "currentState": "SUCCESS",
+        "messageKey": "status.success"
+      }
+    }
+  ]
+}
