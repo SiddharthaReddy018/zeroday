@@ -52,6 +52,9 @@ public final class MockDeviceAdapter implements DeviceAdapter {
         NO_FACE
     }
 
+    /** Dummy pixel data for mock frames — non-null so hasPixelData() returns true. */
+    private static final byte[] DUMMY_PIXELS = new byte[]{0x42, 0x4D, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
+
     private Scenario scenario;
     private boolean open = false;
     private int frameCounter = 0;
@@ -120,7 +123,7 @@ public final class MockDeviceAdapter implements DeviceAdapter {
             case BONA_FIDE:
                 return new FaceFrame(
                         FrameQuality.GOOD, frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, null,
+                        timestamp, seqNum, 1920, 1080, DUMMY_PIXELS,
                         400, 200, 300, 400,
                         0.0, 0.0, 0.0, 1,
                         250.0, 128.0, null);
@@ -135,7 +138,7 @@ public final class MockDeviceAdapter implements DeviceAdapter {
             case DEEPFAKE:
                 return new FaceFrame(
                         FrameQuality.SUSPECT, frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, null,
+                        timestamp, seqNum, 1920, 1080, DUMMY_PIXELS,
                         400, 200, 280, 380,
                         2.0, 1.0, 0.5, 1,
                         180.0, 115.0, null);

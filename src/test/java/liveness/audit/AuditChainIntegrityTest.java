@@ -144,8 +144,8 @@ class AuditChainIntegrityTest {
     void auditLogDelegatesToChain() {
         AuditLog log = new AuditLog();
         log.logTransition("IDLE", "DEVICE_CHECK", "START_CAPTURE");
-        log.logScore("MiniFASNet", 85, 0.95);
-        log.logBand("CLEAR_BONA_FIDE", 85, 3);
+        log.logScore("MiniFASNet", 85, "quality=0.95");
+        log.logBand("CLEAR_BONA_FIDE", 85, "windows=3");
 
         assertEquals(3, log.chain().size());
         assertTrue(log.chain().verify());

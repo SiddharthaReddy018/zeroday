@@ -22,3 +22,8 @@ models/
 
 # Paywalled standards PDFs (§0)
 *.pdf
+
+# Documentation repo (tracked separately in zerodayjunk-)
+docs/
+*handoff*.md
+*master_plan*.md

@@ -74,7 +74,7 @@ public final class LivenessService {
         // Build per-session components
         CaptureIntegrityChecker captureIntegrity = buildCaptureIntegrity();
         SupervisorAuth supervisor = (workflow == WorkflowType.SUPERVISOR_AUTH)
-                ? new SupervisorAuth() : null;
+                ? new SupervisorAuth(subjectId) : null;
 
         LivenessSession session = new LivenessSession(
                 subjectId, device, config, padScorer, sameFaceChecker,
@@ -148,7 +148,7 @@ public final class LivenessService {
                             long requestTs = System.currentTimeMillis();
                             state = session.processRCapture(
                                     rcaptureFrame.pixelData(),
-                                    session.sessionId(),  // transaction ID
+                                    session.boundTransactionId(),  // nonce-bound transaction ID
                                     rcaptureFrame.timestampMs(),
                                     requestTs);
                         } else {

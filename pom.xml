@@ -7,7 +7,7 @@
 
   <groupId>io.oxalpha</groupId>
   <artifactId>face-liveness-pad</artifactId>
-  <version>0.2.0-M2</version>
+  <version>0.3.0-M3</version>
   <packaging>jar</packaging>
 
   <name>MOSIP Face Liveness + PAD</name>

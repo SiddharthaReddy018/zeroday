@@ -442,6 +442,11 @@ public final class LivenessSession {
     public int retryCount()              { return retryCount; }
     public BoundChallenge currentChallenge() { return currentChallenge; }
 
+    /** Returns the nonce-bound transaction ID for RCAPTURE requests. */
+    public String boundTransactionId() {
+        return captureIntegrity.boundTransactionId(sessionId);
+    }
+
     public List<BoundChallenge> issuedChallenges() {
         return Collections.unmodifiableList(issuedChallenges);
     }
@@ -452,7 +457,7 @@ public final class LivenessSession {
             case SUCCESS:          return Verdict.PASS;
             case BLOCKED_ATTACK:   return Verdict.ATTACK;
             case FAILED_MAX_RETRIES: return Verdict.MAX_RETRIES;
-            case DEVICE_ERROR:     return Verdict.DEVICE_ERROR;
+            case DEVICE_ERROR:     return Verdict.DEVICE_FAILURE;
             default:               return Verdict.PENDING;
         }
     }

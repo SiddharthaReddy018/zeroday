@@ -38,4 +38,9 @@ public class CaptureIntegrityChecker {
         return transactionBinder.verifyTransactionId(returnedTransactionId) && 
                freshnessChecker.checkFreshness(rcaptureTimestamp, requestTimestamp);
     }
+
+    /** Returns the nonce-bound transaction ID for a given base ID. */
+    public String boundTransactionId(String baseId) {
+        return transactionBinder.bindToTransactionId(baseId);
+    }
 }

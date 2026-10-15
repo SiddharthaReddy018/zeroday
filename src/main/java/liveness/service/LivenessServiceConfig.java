@@ -1,7 +1,6 @@
 package liveness.service;
 
-import liveness.config.*;
-import liveness.core.*;
+import liveness.policy.LivenessConfig;
 
 public class LivenessServiceConfig {
     private LivenessConfig activeConfig;

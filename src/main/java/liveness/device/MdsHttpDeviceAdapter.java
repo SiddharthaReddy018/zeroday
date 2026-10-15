@@ -1,6 +1,7 @@
 package liveness.device;
 
 import liveness.core.FaceFrame;
+import liveness.core.FrameQuality;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -117,7 +118,10 @@ public class MdsHttpDeviceAdapter implements DeviceAdapter {
             }
 
             byte[] imageBytes = Base64.getDecoder().decode(bioValue);
-            return new FaceFrame(imageBytes, System.currentTimeMillis());
+            return new FaceFrame(FrameQuality.GOOD, "rcapture", 0,
+                    System.currentTimeMillis(), 0,
+                    0, 0, imageBytes, 0, 0, 0, 0,
+                    0.0, 0.0, 0.0, 1, 0.0, 0.0, null);
 
         } catch (Exception e) {
             throw new DeviceException("Capture failed: " + e.getMessage(), e);
