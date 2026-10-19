@@ -1,0 +1,15 @@
+name: liveness_ui
+description: Reference Flutter UI for MOSIP face liveness + PAD (M4). Talks to the native engine only through platform channels.
+version: 0.4.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

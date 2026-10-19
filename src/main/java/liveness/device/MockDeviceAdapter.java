@@ -98,7 +98,7 @@ public final class MockDeviceAdapter implements DeviceAdapter {
         }
 
         frameCounter++;
-        return buildFrame(scenario, frameCounter);
+        return withPerceptualHash(buildFrame(scenario, frameCounter), scenario, frameCounter);
     }
 
     @Override
@@ -115,6 +115,29 @@ public final class MockDeviceAdapter implements DeviceAdapter {
      * Builds a frame appropriate for the scenario.
      * The scenario label is NOT encoded in the frame — the scorer cannot cheat.
      */
+    /**
+     * Gives mock frames a perceptual hash like a real device would: unique per frame, except FRAME_FREEZE
+     * (constant) and FRAME_LOOP (repeats every LOOP_CYCLE frames). Without this every mock frame hashed to 0
+     * and any session of 5+ frames looked frozen.
+     */
+    private static FaceFrame withPerceptualHash(FaceFrame f, Scenario s, int seqNum) {
+        long h;
+        if (s == Scenario.FRAME_FREEZE) h = 0xF00DF00DL;
+        else if (s == Scenario.FRAME_LOOP) h = mix(1000L + (seqNum - 1) % LOOP_CYCLE);
+        else h = mix(seqNum);
+        return new FaceFrame(f.quality(), f.signature(), f.deviceId(), f.timestampMs(), f.sequenceNum(),
+                f.widthPx(), f.heightPx(), f.pixelData(), f.faceBboxX(), f.faceBboxY(), f.faceBboxWidth(),
+                f.faceBboxHeight(), f.yawDeg(), f.pitchDeg(), f.rollDeg(), f.faceCount(),
+                f.laplacianVariance(), f.brightnessMean(), f.landmarks(), h);
+    }
+
+    private static long mix(long x) { // splitmix64
+        x += 0x9E3779B97F4A7C15L;
+        x = (x ^ (x >>> 30)) * 0xBF58476D1CE4E5B9L;
+        x = (x ^ (x >>> 27)) * 0x94D049BB133111EBL;
+        return x ^ (x >>> 31);
+    }
+
     private FaceFrame buildFrame(Scenario s, int seqNum) {
         long timestamp = System.currentTimeMillis();
         int deviceId = System.identityHashCode(this);

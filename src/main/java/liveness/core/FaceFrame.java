@@ -33,6 +33,7 @@ public final class FaceFrame {
     private final double laplacianVariance;
     private final double brightnessMean;
     private final double[] landmarks;     // flattened landmark coords (nullable until detector runs)
+    private final long pHash;             // 64-bit perceptual hash for freeze/loop detection (0 = not computed)
 
     /**
      * M1-compatible constructor (for existing tests).
@@ -54,6 +55,22 @@ public final class FaceFrame {
                      double yawDeg, double pitchDeg, double rollDeg,
                      int faceCount, double laplacianVariance,
                      double brightnessMean, double[] landmarks) {
+        this(quality, signature, deviceId, timestampMs, sequenceNum, widthPx, heightPx, pixelData,
+             faceBboxX, faceBboxY, faceBboxWidth, faceBboxHeight, yawDeg, pitchDeg, rollDeg,
+             faceCount, laplacianVariance, brightnessMean, landmarks, 0L);
+    }
+
+    /**
+     * Full constructor including the perceptual hash (computed by the adapter from raw pixels).
+     */
+    public FaceFrame(FrameQuality quality, String signature, int deviceId,
+                     long timestampMs, int sequenceNum,
+                     int widthPx, int heightPx, byte[] pixelData,
+                     int faceBboxX, int faceBboxY,
+                     int faceBboxWidth, int faceBboxHeight,
+                     double yawDeg, double pitchDeg, double rollDeg,
+                     int faceCount, double laplacianVariance,
+                     double brightnessMean, double[] landmarks, long pHash) {
         this.quality = Objects.requireNonNull(quality, "quality");
         this.signature = Objects.requireNonNull(signature, "signature");
         this.deviceId = deviceId;
@@ -73,6 +90,7 @@ public final class FaceFrame {
         this.laplacianVariance = laplacianVariance;
         this.brightnessMean = brightnessMean;
         this.landmarks = landmarks;
+        this.pHash = pHash;
     }
 
     // --- M1 getters ---
@@ -97,6 +115,7 @@ public final class FaceFrame {
     public double laplacianVariance() { return laplacianVariance; }
     public double brightnessMean()    { return brightnessMean; }
     public double[] landmarks()       { return landmarks; }
+    public long pHash()               { return pHash; }
 
     /** True if this frame has pixel data attached. */
     public boolean hasPixelData() {

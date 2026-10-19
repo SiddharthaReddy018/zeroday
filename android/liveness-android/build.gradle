@@ -1,0 +1,71 @@
+// MOSIP Face Liveness + PAD - Android library module (M4).
+// Not built by the Maven project. Requires AGP 8.x, Gradle 8.x, JDK 17 to run Gradle (sources stay Java 11).
+plugins {
+    id 'com.android.library' version '8.2.2'
+}
+
+android {
+    namespace 'io.oxalpha.liveness'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 28            // Android 9+
+        targetSdk 31         // per brief; raise when the Registration Client does
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    sourceSets {
+        main {
+            // Reuse the shared engine (liveness.*) and the pure-Java android package from the Maven tree.
+            java.srcDirs += ['../../src/main/java']
+            // Desktop-only code stays out of the APK.
+            java.exclude 'liveness/evaluation/**'
+            java.exclude 'liveness/device/MdsHttpDeviceAdapter.java'
+            java.exclude 'liveness/device/MdsStreamReader.java'
+        }
+        test {
+            java.srcDirs += ['../../src/test/java']
+            java.exclude 'liveness/evaluation/**'
+            java.exclude 'liveness/engine/ModelQualificationTest.java'
+            java.exclude 'liveness/device/**'
+            resources.srcDirs += ['../../']   // makes ui-contract/events-schema.json reachable
+        }
+    }
+
+    // The INT8 model is kept uncompressed so it can be memory-mapped.
+    androidResources { noCompress 'onnx' }
+
+    testOptions { unitTests.returnDefaultValues = true }
+}
+
+dependencies {
+    // ONNX Runtime for Android (AAR). Same ai.onnxruntime API the desktop MiniFasNetScorer uses.
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.16.3'
+
+    // CameraX
+    def camerax = '1.3.1'
+    implementation "androidx.camera:camera-core:$camerax"
+    implementation "androidx.camera:camera-camera2:$camerax"
+    implementation "androidx.camera:camera-lifecycle:$camerax"
+    implementation "androidx.camera:camera-view:$camerax"
+
+    // AndroidX
+    implementation 'androidx.core:core:1.12.0'
+    implementation 'androidx.activity:activity:1.8.2'
+    implementation 'androidx.lifecycle:lifecycle-common-java8:2.7.0'
+
+    // Flutter embedding (compileOnly: the host Flutter app provides it)
+    compileOnly 'io.flutter:flutter_embedding_release:1.0.0-REPLACE_WITH_ENGINE_HASH'
+
+    // Unit tests (JVM, no device)
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.3'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.9.3'
+}
+
+tasks.withType(Test).configureEach { useJUnitPlatform() }

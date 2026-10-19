@@ -88,6 +88,11 @@ public final class LivenessSession {
      * @param supervisor       supervisor auth (nullable)
      * @param machineUserId    composite key for rate limiting
      */
+    private String captureMode = "STREAM";
+
+    /** Recorded in the attestation; defaults to "STREAM" (MDS). Android sets host-camera + rCapture. */
+    public void setCaptureMode(String mode) { if (mode != null && !mode.isEmpty()) this.captureMode = mode; }
+
     public LivenessSession(String subjectId,
                            DeviceAdapter device,
                            LivenessConfig config,
@@ -179,7 +184,7 @@ public final class LivenessSession {
 
         // --- 1. Capture Integrity Check ---
         FrameFingerprint fp = new FrameFingerprint(
-                0L,  // pHash computed from pixel data in production
+                frame.pHash(),  // computed by the DeviceAdapter from raw pixels (0 if not available)
                 frame.timestampMs(),
                 frame.sequenceNum(),
                 frame.widthPx());
@@ -352,7 +357,7 @@ public final class LivenessSession {
 
         // All checks pass — commit
         // Row 18: VERIFYING_FINAL → SUCCESS (only path that produces attestation)
-        String imageSha256 = Sha256.hex(rcaptureImageBytes);
+        String imageSha256 = Sha256.hex(Sha256.digest(rcaptureImageBytes)); // SHA-256 of the image (hex() alone only encodes)
         String transcriptSha256 = audit.chain().latestHash();
 
         List<String> mechanisms = new ArrayList<>();
@@ -370,7 +375,7 @@ public final class LivenessSession {
                 "T1", rcaptureTimestamp,
                 padScorer.modelVersion(),
                 config.configVersion(),
-                "STREAM",
+                captureMode,
                 padResult);
         attestation.sign(signer);
 

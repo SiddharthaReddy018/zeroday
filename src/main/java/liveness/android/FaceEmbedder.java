@@ -1,0 +1,9 @@
+package liveness.android;
+
+/**
+ * Produces an identity embedding for a face image (RGB, row-major). Plug an on-device
+ * face-recognition model here; the repo ships none. Must return the same vector length always.
+ */
+public interface FaceEmbedder {
+    float[] embed(byte[] rgb, int width, int height);
+}

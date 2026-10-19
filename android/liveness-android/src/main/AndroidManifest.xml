@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+
+    <!-- Package visibility (Android 11+): required for SBI discovery and for the integrity checks. -->
+    <queries>
+        <!-- MOSIP SBI apps -->
+        <!-- Discovery action. Info / rCapture actions are "<appId>.Info" / "<appId>.rCapture", sent explicitly
+             (setPackage) to the app that answered discovery, so they need no <queries> entry. -->
+        <intent><action android:name="io.sbi.device" /></intent>
+        <!-- Root managers / hooking frameworks looked for by EnvironmentIntegrityChecker.
+             Without these entries getPackageInfo() reports "not installed" and detection silently fails. -->
+        <package android:name="com.topjohnwu.magisk" />
+        <package android:name="io.github.vvb2060.magisk" />
+        <package android:name="eu.chainfire.supersu" />
+        <package android:name="com.koushikdutta.superuser" />
+        <package android:name="com.noshufou.android.su" />
+        <package android:name="com.thirdparty.superuser" />
+        <package android:name="com.yellowes.su" />
+        <package android:name="me.weishu.kernelsu" />
+        <package android:name="de.robv.android.xposed.installer" />
+        <package android:name="org.lsposed.manager" />
+        <package android:name="io.va.exposed" />
+    </queries>
+
+    <!-- No INTERNET permission: liveness runs fully on device. -->
+    <application />
+</manifest>

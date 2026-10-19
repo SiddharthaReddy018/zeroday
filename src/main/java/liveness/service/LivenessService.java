@@ -72,7 +72,7 @@ public final class LivenessService {
                                           WorkflowType workflow,
                                           LivenessCallback callback) {
         // Build per-session components
-        CaptureIntegrityChecker captureIntegrity = buildCaptureIntegrity();
+        CaptureIntegrityChecker captureIntegrity = buildCaptureIntegrity(device);
         SupervisorAuth supervisor = (workflow == WorkflowType.SUPERVISOR_AUTH)
                 ? new SupervisorAuth(subjectId) : null;
 
@@ -80,6 +80,7 @@ public final class LivenessService {
                 subjectId, device, config, padScorer, sameFaceChecker,
                 challengeGen, retryLimiter, captureIntegrity,
                 signer, supervisor, machineUserId);
+        session.setCaptureMode(device.captureMode());
 
         // --- Drive the state machine ---
         // 1. Start
@@ -91,7 +92,12 @@ public final class LivenessService {
         notifyState(callback, state);
 
         if (state.isTerminal()) {
-            return buildResult(session);
+            // Device failed to open (incl. Android integrity failure): the UI must still be told.
+            LivenessResult early = buildResult(session);
+            if (callback != null) {
+                callback.onResult(early);
+            }
+            return early;
         }
 
         // 3. Frame processing loop
@@ -143,12 +149,14 @@ public final class LivenessService {
                 case FINAL_CAPTURE:
                     // Trigger RCAPTURE
                     try {
-                        FaceFrame rcaptureFrame = device.captureFrame();
+                        String boundTx = session.boundTransactionId();  // nonce-bound transaction ID
+                        long requestTs = System.currentTimeMillis();     // taken BEFORE the capture request
+                        FaceFrame rcaptureFrame = device.captureFinal(boundTx);
                         if (rcaptureFrame != null && rcaptureFrame.hasPixelData()) {
-                            long requestTs = System.currentTimeMillis();
+                            String returnedTx = device.lastReturnedTransactionId();
                             state = session.processRCapture(
                                     rcaptureFrame.pixelData(),
-                                    session.boundTransactionId(),  // nonce-bound transaction ID
+                                    returnedTx != null ? returnedTx : boundTx,
                                     rcaptureFrame.timestampMs(),
                                     requestTs);
                         } else {
@@ -187,9 +195,9 @@ public final class LivenessService {
     // Internal helpers
     // =========================================================================
 
-    private CaptureIntegrityChecker buildCaptureIntegrity() {
+    private CaptureIntegrityChecker buildCaptureIntegrity(DeviceAdapter device) {
         FrameSequenceMonitor monitor = new FrameSequenceMonitor(
-                config.frameFreezePHashWindowSize(), 33L);  // ~30fps
+                config.frameFreezePHashWindowSize(), device.expectedFrameIntervalMs());
         DeviceIdentityValidator deviceId = new DeviceIdentityValidator();
         FreshnessChecker freshness = new FreshnessChecker(config.rcaptureFreshnessWindowMs());
         SessionTransactionBinder binder = new SessionTransactionBinder();

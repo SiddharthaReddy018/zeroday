@@ -1,0 +1,2 @@
+rootProject.name = 'liveness-android-m4'
+include ':liveness-android'
