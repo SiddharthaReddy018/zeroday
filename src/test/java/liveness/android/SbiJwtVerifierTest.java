@@ -62,6 +62,14 @@ class SbiJwtVerifierTest {
     }
 
     @Test
+    void fromPemLoadsRootCertificateProperly() throws Exception {
+        String pem = "-----BEGIN CERTIFICATE-----\n" + ROOT_CERT + "\n-----END CERTIFICATE-----\n";
+        SbiJwtVerifier v = SbiJwtVerifier.fromPem(pem);
+        assertNotNull(v);
+        assertFalse(v.isDisabled());
+    }
+
+    @Test
     void rejectsSelfSignedRogueCertificate() throws Exception {
         String jwt = sign(ROGUE_CERT, ROGUE_KEY, "RS256", "{}");
         assertEquals("UNTRUSTED_CERT", reason(assertThrows(SbiJwtVerifier.VerificationException.class, () -> verifier(ROOT_CERT).verify(jwt))));

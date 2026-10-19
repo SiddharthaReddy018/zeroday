@@ -55,6 +55,32 @@ public final class SbiJwtVerifier {
 
     public boolean isDisabled() { return disabled; }
 
+    /**
+     * Creates a verifier from PEM-encoded certificates string using system clock.
+     * Useful for loading trust anchors directly from configuration or asset files.
+     */
+    public static SbiJwtVerifier fromPem(String pem) throws VerificationException {
+        try {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            java.util.Collection<? extends java.security.cert.Certificate> certs =
+                    cf.generateCertificates(new ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
+            List<X509Certificate> x509List = new ArrayList<>();
+            for (java.security.cert.Certificate c : certs) {
+                if (c instanceof X509Certificate) {
+                    x509List.add((X509Certificate) c);
+                }
+            }
+            if (x509List.isEmpty()) {
+                throw new VerificationException("NO_CERTIFICATE_IN_PEM");
+            }
+            return new SbiJwtVerifier(x509List, Instant::now);
+        } catch (VerificationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new VerificationException("BAD_CERTIFICATE: " + e.getMessage());
+        }
+    }
+
     public static X509Certificate parseCertificate(byte[] der) throws VerificationException {
         try {
             return (X509Certificate) CertificateFactory.getInstance("X.509")
