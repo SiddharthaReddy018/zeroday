@@ -47,22 +47,22 @@ public final class IadMetrics {
 
     /** Freeze detection rate: detected / total freeze attempts. */
     public double freezeDetectionRate() {
-        return freezeTotal == 0 ? 0.0 : (double) freezeDetected / freezeTotal;
+        return freezeTotal == 0 ? Double.NaN : (double) freezeDetected / freezeTotal;
     }
 
     /** Loop detection rate: detected / total loop replay attempts. */
     public double loopDetectionRate() {
-        return loopTotal == 0 ? 0.0 : (double) loopDetected / loopTotal;
+        return loopTotal == 0 ? Double.NaN : (double) loopDetected / loopTotal;
     }
 
     /** Nonce-swap rejection rate: rejected / total nonce swap attempts. */
     public double nonceSwapRejectionRate() {
-        return nonceSwapTotal == 0 ? 0.0 : (double) nonceSwapRejected / nonceSwapTotal;
+        return nonceSwapTotal == 0 ? Double.NaN : (double) nonceSwapRejected / nonceSwapTotal;
     }
 
     /** False IAD rate: false alarms on legitimate sessions / total legitimate. */
     public double falseIadRate() {
-        return legitimateTotal == 0 ? 0.0 : (double) legitimateFalseAlarms / legitimateTotal;
+        return legitimateTotal == 0 ? Double.NaN : (double) legitimateFalseAlarms / legitimateTotal;
     }
 
     // ── Report ─────────────────────────────────────────────────────────

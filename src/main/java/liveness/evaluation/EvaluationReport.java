@@ -70,7 +70,7 @@ public final class EvaluationReport {
     public String generate() {
         StringBuilder sb = new StringBuilder();
         sb.append("# Face Liveness PAD — Evaluation Report\n\n");
-        sb.append("**ISO/IEC 30107-3 Compliant · MOSIP Decode 2026**\n\n");
+        sb.append("**ISO/IEC 30107-3 aligned (metrics and reporting structure; not a conformance claim) · MOSIP Decode 2026**\n\n");
         sb.append(String.format("**Threshold:** %d (score 0-100, higher = more live)\n\n", padMetrics.threshold()));
         sb.append(String.format("**Total samples:** %d\n\n", padMetrics.sampleCount()));
 

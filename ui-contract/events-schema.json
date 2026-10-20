@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "MOSIP Face Liveness UI Event Schema",
   "description": "Shared event schema for Desktop (JavaFX) and Android (Flutter). Events flow from the liveness engine to the UI layer. The UI NEVER calls the engine directly (§9, §22).",
-  "version": "0.2.0-M2",
+  "version": "0.6.0",
 
   "definitions": {
     "LivenessState": {

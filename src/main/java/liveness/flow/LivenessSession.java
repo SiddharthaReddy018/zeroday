@@ -117,9 +117,9 @@ public final class LivenessSession {
         this.spatialPad = new SpatialPadScorer(config.minQualifyingFrames());
         this.decisionEngine = new DecisionEngine(policy, config.attackPersistenceWindows());
         this.qualityGate = new QualityGate(
-                100.0,  // blurMinVariance seed
-                40.0,   // brightnessMin
-                250.0,  // brightnessMax
+                config.blurMinVariance(),
+                config.brightnessMin(),
+                config.brightnessMax(),
                 config.faceSizeMinPx(),
                 config.poseMaxYawDeg(),
                 config.poseMaxPitchDeg());
@@ -299,6 +299,7 @@ public final class LivenessSession {
      * Issues a challenge prompt: CHALLENGE_PROMPT → CHALLENGE_WAIT.
      */
     public LivenessState issueChallenge() {
+        actionHitFrames = 0;
         currentChallenge = challengeGen.next(
                 sessionId, challengeCount, config.challengeTimeoutMs());
         issuedChallenges.add(currentChallenge);
@@ -391,6 +392,14 @@ public final class LivenessSession {
             next = machine.fire(LivenessEvent.FINAL_PAD_ATTACK);
             audit.logTransition(LivenessState.VERIFYING_FINAL, next, "FINAL_PAD_ATTACK");
             retryLimiter.recordBlockedAttack(sessionId, machineUserId);
+            return next;
+        }
+
+        if (finalBand != LivenessPolicy.Band.CLEAR_BONA_FIDE) {
+            // Row 19 (final quality/PAD fail): only a CLEAR_BONA_FIDE final image may commit.
+            next = machine.fire(LivenessEvent.SAME_FACE_FAIL);
+            audit.logTransition(LivenessState.VERIFYING_FINAL, next,
+                    "FINAL_PAD_NOT_CLEAR_BONA_FIDE: band=" + finalBand.name());
             return next;
         }
 
@@ -522,6 +531,9 @@ public final class LivenessSession {
     // Internal helpers
     // =========================================================================
 
+    /** Consecutive frames hit counter for BLINK/SMILE confirmation (configured via config.minActionFrames()). */
+    private int actionHitFrames = 0;
+
     private static final float[] NO_INPUT = new float[0];
 
     /**
@@ -599,9 +611,23 @@ public final class LivenessSession {
 
         // Check if the challenge action was performed
         if (currentChallenge != null && frame.hasLandmarks()) {
-            boolean actionDetected = detectChallengeAction(frame, currentChallenge.action());
+            boolean rawHit = detectChallengeAction(frame, currentChallenge.action());
+            actionHitFrames = rawHit ? actionHitFrames + 1 : 0;
+            boolean actionDetected = rawHit && actionHitFrames >= requiredHitFrames(currentChallenge.action());
             if (actionDetected) {
                 long now = System.currentTimeMillis();
+                ChallengeResponseValidator.ValidationResult vr =
+                        challengeValidator.validate(currentChallenge, currentChallenge.action(), now);
+                if (!vr.isAccepted()) {
+                    // Expired / wrong-sequence response: not counted; the timeout path handles expiry.
+                    audit.logChallengeResult(currentChallenge.action(), false, vr.reason());
+                    actionHitFrames = 0;
+                    return machine.current();
+                }
+                if (vr.isSuspiciousLatency()) {
+                    audit.logChallengeResult(currentChallenge.action(), true, "SUSPICIOUS_LATENCY");
+                }
+                actionHitFrames = 0;
                 long latencyMs = now - currentChallenge.issuedAtMs();
                 challengeEchoes.add(new Attestation.ChallengeEcho(
                         currentChallenge.action(), latencyMs));
@@ -633,6 +659,11 @@ public final class LivenessSession {
      * Detects whether the subject performed the requested challenge action
      * using landmark-based detectors (§20.1-20.2).
      */
+    /** Consecutive qualifying frames needed to confirm an action (HANDOFF-2 s5: blink needs several low-EAR frames). */
+    private int requiredHitFrames(String action) {
+        return ("BLINK".equals(action) || "SMILE".equals(action)) ? config.minActionFrames() : 1;
+    }
+
     private boolean detectChallengeAction(FaceFrame frame, String action) {
         double[] landmarks = frame.landmarks();
         if (landmarks == null || landmarks.length < 12) {
@@ -641,34 +672,34 @@ public final class LivenessSession {
 
         switch (action) {
             case "BLINK":
-                // EAR threshold 0.2 (§20.1, starting value)
+                // EAR threshold (§20.1, UNCALIBRATED seed via config)
                 double ear = LandmarkDetector.computeEAR(landmarks);
-                return LandmarkDetector.detectBlink(ear, 0.2);
+                return LandmarkDetector.detectBlink(ear, config.earBlinkThreshold());
 
             case "SMILE":
                 if (landmarks.length >= 16) {
                     double mar = LandmarkDetector.computeMAR(landmarks);
-                    return LandmarkDetector.detectSmile(mar, 0.6);
+                    return LandmarkDetector.detectSmile(mar, config.marSmileThreshold());
                 }
                 return false;
 
             case "TURN_LEFT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), 15.0, "LEFT");
+                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawTurnThreshold(), "LEFT");
 
             case "TURN_RIGHT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), 15.0, "RIGHT");
+                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawTurnThreshold(), "RIGHT");
 
             case "LOOK_LEFT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), 10.0, "LEFT");
+                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawLookThreshold(), "LEFT");
 
             case "LOOK_RIGHT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), 10.0, "RIGHT");
+                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawLookThreshold(), "RIGHT");
 
             case "LOOK_UP":
-                return frame.pitchDeg() < -10.0;
+                return frame.pitchDeg() < -config.pitchLookThreshold();
 
             case "LOOK_DOWN":
-                return frame.pitchDeg() > 10.0;
+                return frame.pitchDeg() > config.pitchLookThreshold();
 
             default:
                 return false;

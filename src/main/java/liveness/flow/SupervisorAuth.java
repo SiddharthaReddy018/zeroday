@@ -31,7 +31,8 @@ public final class SupervisorAuth {
      * @return true if authentication succeeded
      */
     public boolean authenticate(String credential) {
-        // M2 stub: accept any non-null, non-empty credential
+        // M2 stub: accept any non-null, non-empty credential. Refused unless -Dliveness.allowStubs=true (ADR-010 style).
+        liveness.policy.StubPolicy.check(true, "SupervisorAuth credential check");
         // Production: biometric verification against onboarded template
         if (credential != null && !credential.isEmpty()) {
             this.authenticated = true;

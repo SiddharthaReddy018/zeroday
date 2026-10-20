@@ -74,7 +74,7 @@ public final class WilsonConfidenceInterval {
 
         @Override
         public String toString() {
-            return String.format("[%.4f, %.4f, %.4f]", lower, center, upper);
+            return String.format("[%.4f, %.4f]", lower, upper);   // point estimate is reported separately; center is not the estimate
         }
     }
 }

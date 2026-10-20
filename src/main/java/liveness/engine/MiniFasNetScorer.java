@@ -18,7 +18,7 @@ import java.util.Collections;
  * <p>
  * Model contract verified via {@link ModelQualificationTest}:
  * - Input: [1, 3, 128, 128] float32 RGB [0, 1]
- * - Output: [1, 2] logits [spoof_score, live_score]
+ * - Output: [1, 2] logits [live, spoof] (index 0 = live; ADR-011)
  */
 public final class MiniFasNetScorer implements AutoCloseable {
 
@@ -29,6 +29,7 @@ public final class MiniFasNetScorer implements AutoCloseable {
     private OrtEnvironment env;
     private OrtSession session;
     private String inputName;
+    private String modelSha;
 
     /**
      * Initializes the scorer.
@@ -52,7 +53,15 @@ public final class MiniFasNetScorer implements AutoCloseable {
             opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
             this.session = env.createSession(modelPath.toString(), opts);
             this.inputName = session.getInputNames().iterator().next();
-        } catch (OrtException | RuntimeException | LinkageError e) {   // LinkageError: native ORT lib missing
+            // R1: the input contract comes from the model file, not from this class.
+            ai.onnxruntime.NodeInfo ni = session.getInputInfo().get(inputName);
+            long[] shp = ((ai.onnxruntime.TensorInfo) ni.getInfo()).getShape();
+            if (shp.length != 4 || shp[1] != 3 || shp[2] != 128 || shp[3] != 128) {
+                throw new IllegalStateException("Unsupported PAD input shape " + java.util.Arrays.toString(shp)
+                        + "; expected [N,3,128,128]. Update PadPreprocessor with the model.");
+            }
+            this.modelSha = liveness.util.Sha256.hex(liveness.util.Sha256.digest(Files.readAllBytes(modelPath)));
+        } catch (OrtException | java.io.IOException | RuntimeException | LinkageError e) {   // LinkageError: native ORT lib missing
             throw new IllegalStateException("PAD model failed to load: " + modelPath, e);
         }
         this.isStubMode = false;
@@ -107,7 +116,7 @@ public final class MiniFasNetScorer implements AutoCloseable {
 
     /** Model version string for attestation (§6.7). */
     public String modelVersion() {
-        return isStubMode ? "STUB-v0.0.0" : "MiniFASNetV2-SE-v1.0";
+        return isStubMode ? "STUB-v0.0.0" : "MiniFASNetV2-SE-sha256:" + modelSha.substring(0, 16);
     }
 
     /** Whether running in stub mode (no model file). */

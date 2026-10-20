@@ -34,6 +34,17 @@ public final class LivenessConfig {
     private final int poseMaxPitchDeg;
     private final int minQualifyingFrames;
 
+    // --- Uncalibrated action and quality seeds (HANDOFF-2 R12, AUDIT_TODO C1) ---
+    private final double blurMinVariance;
+    private final double brightnessMin;
+    private final double brightnessMax;
+    private final double earBlinkThreshold;
+    private final double marSmileThreshold;
+    private final double yawTurnThreshold;
+    private final double yawLookThreshold;
+    private final double pitchLookThreshold;
+    private final int minActionFrames;
+
     // --- Frame sequence monitor ---
     private final int frameFreezePHashWindowSize;
     private final long rcaptureFreshnessWindowMs;
@@ -57,6 +68,15 @@ public final class LivenessConfig {
         this.poseMaxYawDeg = b.poseMaxYawDeg;
         this.poseMaxPitchDeg = b.poseMaxPitchDeg;
         this.minQualifyingFrames = b.minQualifyingFrames;
+        this.blurMinVariance = b.blurMinVariance;
+        this.brightnessMin = b.brightnessMin;
+        this.brightnessMax = b.brightnessMax;
+        this.earBlinkThreshold = b.earBlinkThreshold;
+        this.marSmileThreshold = b.marSmileThreshold;
+        this.yawTurnThreshold = b.yawTurnThreshold;
+        this.yawLookThreshold = b.yawLookThreshold;
+        this.pitchLookThreshold = b.pitchLookThreshold;
+        this.minActionFrames = b.minActionFrames;
         this.frameFreezePHashWindowSize = b.frameFreezePHashWindowSize;
         this.rcaptureFreshnessWindowMs = b.rcaptureFreshnessWindowMs;
         this.configVersion = b.configVersion;
@@ -76,6 +96,15 @@ public final class LivenessConfig {
     public int poseMaxYawDeg() { return poseMaxYawDeg; }
     public int poseMaxPitchDeg() { return poseMaxPitchDeg; }
     public int minQualifyingFrames() { return minQualifyingFrames; }
+    public double blurMinVariance() { return blurMinVariance; }
+    public double brightnessMin() { return brightnessMin; }
+    public double brightnessMax() { return brightnessMax; }
+    public double earBlinkThreshold() { return earBlinkThreshold; }
+    public double marSmileThreshold() { return marSmileThreshold; }
+    public double yawTurnThreshold() { return yawTurnThreshold; }
+    public double yawLookThreshold() { return yawLookThreshold; }
+    public double pitchLookThreshold() { return pitchLookThreshold; }
+    public int minActionFrames() { return minActionFrames; }
     public int frameFreezePHashWindowSize() { return frameFreezePHashWindowSize; }
     public long rcaptureFreshnessWindowMs() { return rcaptureFreshnessWindowMs; }
     public int configVersion() { return configVersion; }
@@ -103,6 +132,15 @@ public final class LivenessConfig {
         private int poseMaxYawDeg = 30;
         private int poseMaxPitchDeg = 30;
         private int minQualifyingFrames = 5;
+        private double blurMinVariance = 100.0;
+        private double brightnessMin = 40.0;
+        private double brightnessMax = 250.0;
+        private double earBlinkThreshold = 0.2;
+        private double marSmileThreshold = 0.6;
+        private double yawTurnThreshold = 15.0;
+        private double yawLookThreshold = 10.0;
+        private double pitchLookThreshold = 10.0;
+        private int minActionFrames = 2;
         private int frameFreezePHashWindowSize = 5;
         private long rcaptureFreshnessWindowMs = 30000;
         private int configVersion = 1;
@@ -120,6 +158,15 @@ public final class LivenessConfig {
         public Builder poseMaxYawDeg(int v)            { this.poseMaxYawDeg = v; return this; }
         public Builder poseMaxPitchDeg(int v)          { this.poseMaxPitchDeg = v; return this; }
         public Builder minQualifyingFrames(int v)      { this.minQualifyingFrames = v; return this; }
+        public Builder blurMinVariance(double v)       { this.blurMinVariance = v; return this; }
+        public Builder brightnessMin(double v)         { this.brightnessMin = v; return this; }
+        public Builder brightnessMax(double v)         { this.brightnessMax = v; return this; }
+        public Builder earBlinkThreshold(double v)     { this.earBlinkThreshold = v; return this; }
+        public Builder marSmileThreshold(double v)     { this.marSmileThreshold = v; return this; }
+        public Builder yawTurnThreshold(double v)      { this.yawTurnThreshold = v; return this; }
+        public Builder yawLookThreshold(double v)      { this.yawLookThreshold = v; return this; }
+        public Builder pitchLookThreshold(double v)    { this.pitchLookThreshold = v; return this; }
+        public Builder minActionFrames(int v)          { this.minActionFrames = v; return this; }
         public Builder frameFreezePHashWindowSize(int v) { this.frameFreezePHashWindowSize = v; return this; }
         public Builder rcaptureFreshnessWindowMs(long v) { this.rcaptureFreshnessWindowMs = v; return this; }
         public Builder configVersion(int v)            { this.configVersion = v; return this; }

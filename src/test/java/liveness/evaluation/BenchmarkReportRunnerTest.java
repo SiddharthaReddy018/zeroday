@@ -27,6 +27,8 @@ public class BenchmarkReportRunnerTest {
 
         List<ManifestEntry> entries = ManifestLoader.load(manifestPath);
         assertTrue(entries.size() > 1000, "Manifest should have >1000 entries");
+        List<String> manifestIssues = EvaluationHarness.validateManifest(entries);
+        assertTrue(manifestIssues.isEmpty(), "Manifest validation issues: " + manifestIssues);
 
         try (MiniFasNetScorer model = new MiniFasNetScorer(modelPath)) {
             Path sidecar = Paths.get(manifestPath.toString() + ".bbox.csv");
