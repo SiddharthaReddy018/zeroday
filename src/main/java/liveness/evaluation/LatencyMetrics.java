@@ -29,6 +29,13 @@ public final class LatencyMetrics {
         measurements.get(component).add(durationNanos);
     }
 
+    /** Appends all raw measurements of {@code other} (used to attach scorer-side timings to a run). */
+    public void mergeFrom(LatencyMetrics other) {
+        for (Map.Entry<String, List<Long>> e : other.measurements.entrySet()) {
+            for (long v : e.getValue()) record(e.getKey(), v);
+        }
+    }
+
     /**
      * Returns the specified percentile for a component in milliseconds.
      *

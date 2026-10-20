@@ -27,6 +27,35 @@ public final class EvaluationReport {
     private final FairnessAnalyzer fairness;
     private final LatencyMetrics latency;
 
+    private final java.util.List<String> provenance = new java.util.ArrayList<>();
+
+    /**
+     * R9 (ADR-010): adds a provenance/limits statement (data source, synthetic vs live, face localisation,
+     * scorer identity). Printed in its own section near the top of the report.
+     */
+    public EvaluationReport addProvenance(String statement) {
+        if (statement != null && !statement.trim().isEmpty()) provenance.add(statement.trim());
+        return this;
+    }
+
+    private final java.util.Map<String, String> notMeasured = new java.util.LinkedHashMap<>();
+
+    /**
+     * R9: a metric that this run could not measure is listed with the reason. It is never estimated,
+     * defaulted to 0 or derived from other numbers.
+     */
+    public EvaluationReport addNotMeasured(String metric, String reason) {
+        notMeasured.put(metric, reason);
+        return this;
+    }
+
+    /** R9 check, separate from {@link #validateContract()} so existing contract tests are unaffected. */
+    public java.util.List<String> validateProvenance() {
+        java.util.List<String> v = new ArrayList<>();
+        if (provenance.isEmpty()) v.add("Report has no provenance/limits statement (R9)");
+        return v;
+    }
+
     public EvaluationReport(PadMetrics padMetrics, IadMetrics iadMetrics,
                             FairnessAnalyzer fairness, LatencyMetrics latency) {
         this.padMetrics = padMetrics;
@@ -52,6 +81,12 @@ public final class EvaluationReport {
                 padMetrics.ruleOf30Satisfied()
                         ? "(Rule of 30 satisfied)"
                         : "(**WARNING: Rule of 30 NOT satisfied — BPCER is exploratory**)"));
+
+        if (!provenance.isEmpty()) {
+            sb.append("## Evaluation Provenance and Limits\n\n");
+            for (String p : provenance) sb.append("- ").append(p).append("\n");
+            sb.append("\n");
+        }
 
         sb.append("---\n\n");
 
@@ -85,6 +120,15 @@ public final class EvaluationReport {
         // Latency
         if (latency != null) {
             sb.append(latency.report());
+            sb.append("\n---\n\n");
+        }
+
+        if (!notMeasured.isEmpty()) {
+            sb.append("## Metrics Not Measured in This Run\n\n");
+            sb.append("| Metric | Why it is not reported |\n|---|---|\n");
+            for (java.util.Map.Entry<String, String> e : notMeasured.entrySet()) {
+                sb.append("| ").append(e.getKey()).append(" | ").append(e.getValue()).append(" |\n");
+            }
             sb.append("\n---\n\n");
         }
 

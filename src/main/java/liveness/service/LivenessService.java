@@ -39,6 +39,10 @@ public final class LivenessService {
     private final ChallengeGenerator challengeGen;
     private final RetryRateLimiter retryLimiter;
     private final EcdsaSignerStub signer;
+    private volatile liveness.android.FaceEmbedder faceEmbedder; // optional; required for a real same-face check
+
+    /** Plugs the face embedder (e.g. SFace/ArcFace). Without one, same-face fails closed outside test stubs. */
+    public void setFaceEmbedder(liveness.android.FaceEmbedder embedder) { this.faceEmbedder = embedder; }
 
     public LivenessService(LivenessConfig config,
                            MiniFasNetScorer padScorer,
@@ -81,6 +85,7 @@ public final class LivenessService {
                 challengeGen, retryLimiter, captureIntegrity,
                 signer, supervisor, machineUserId);
         session.setCaptureMode(device.captureMode());
+        session.setFaceEmbedder(faceEmbedder);
 
         // --- Drive the state machine ---
         // 1. Start
@@ -155,7 +160,7 @@ public final class LivenessService {
                         if (rcaptureFrame != null && rcaptureFrame.hasPixelData()) {
                             String returnedTx = device.lastReturnedTransactionId();
                             state = session.processRCapture(
-                                    rcaptureFrame.pixelData(),
+                                    rcaptureFrame,
                                     returnedTx != null ? returnedTx : boundTx,
                                     rcaptureFrame.timestampMs(),
                                     requestTs);
@@ -217,7 +222,8 @@ public final class LivenessService {
                 session.sessionId(),
                 session.retryCount(),
                 session.currentState() != LivenessState.SUCCESS
-                        ? session.currentState().name() : null);
+                        ? session.currentState().name() : null,
+                session.signedAuditHead());
     }
 
     // =========================================================================
@@ -243,9 +249,17 @@ public final class LivenessService {
         private final String sessionId;
         private final int retryCount;
         private final String failureReason;     // non-null only on failure
+        private final liveness.audit.AuditSeal.SignedHead auditHead; // signed for every outcome (ADR-010)
 
         public LivenessResult(Verdict verdict, Attestation attestation,
                               String sessionId, int retryCount, String failureReason) {
+            this(verdict, attestation, sessionId, retryCount, failureReason, null);
+        }
+
+        public LivenessResult(Verdict verdict, Attestation attestation,
+                              String sessionId, int retryCount, String failureReason,
+                              liveness.audit.AuditSeal.SignedHead auditHead) {
+            this.auditHead = auditHead;
             this.verdict = verdict;
             this.attestation = attestation;
             this.sessionId = sessionId;
@@ -258,6 +272,7 @@ public final class LivenessService {
         public String sessionId()          { return sessionId; }
         public int retryCount()            { return retryCount; }
         public String failureReason()      { return failureReason; }
+        public liveness.audit.AuditSeal.SignedHead auditHead() { return auditHead; }
 
         /** True only if verdict is PASS and attestation is present. */
         public boolean isSuccess() {

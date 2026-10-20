@@ -31,24 +31,31 @@ public final class MiniFasNetScorer implements AutoCloseable {
     private String inputName;
 
     /**
-     * Initializes the scorer. If {@code modelPath} is null or does not exist,
-     * falls back to stub mode.
+     * Initializes the scorer.
+     * <ul>
+     *   <li>{@code modelPath == null}: explicit stub mode (tests / UI demos only).</li>
+     *   <li>{@code modelPath != null}: the model MUST load. A missing file or a load failure throws
+     *       {@link IllegalStateException}; it never silently degrades to a stub that passes everyone.</li>
+     * </ul>
      */
     public MiniFasNetScorer(Path modelPath) {
-        boolean stub = true;
-        if (modelPath != null && Files.exists(modelPath)) {
-            try {
-                this.env = OrtEnvironment.getEnvironment();
-                OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-                opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
-                this.session = env.createSession(modelPath.toString(), opts);
-                this.inputName = session.getInputNames().iterator().next();
-                stub = false;
-            } catch (OrtException e) {
-                stub = true;
-            }
+        if (modelPath == null) {
+            this.isStubMode = true;
+            return;
         }
-        this.isStubMode = stub;
+        if (!Files.exists(modelPath)) {
+            throw new IllegalStateException("PAD model file not found: " + modelPath);
+        }
+        try {
+            this.env = OrtEnvironment.getEnvironment();
+            OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+            opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
+            this.session = env.createSession(modelPath.toString(), opts);
+            this.inputName = session.getInputNames().iterator().next();
+        } catch (OrtException | RuntimeException | LinkageError e) {   // LinkageError: native ORT lib missing
+            throw new IllegalStateException("PAD model failed to load: " + modelPath, e);
+        }
+        this.isStubMode = false;
     }
 
     public void setStubScore(int score) {
@@ -66,6 +73,10 @@ public final class MiniFasNetScorer implements AutoCloseable {
             return stubScore;
         }
 
+        if (preprocessedInput == null || preprocessedInput.length != 3 * 128 * 128) {
+            throw new IllegalArgumentException("PAD input must be 3x128x128 floats (49152), got "
+                    + (preprocessedInput == null ? "null" : String.valueOf(preprocessedInput.length)));
+        }
         try {
             long[] shape = new long[]{1, 3, 128, 128};
             FloatBuffer buffer = FloatBuffer.wrap(preprocessedInput);
@@ -73,14 +84,15 @@ public final class MiniFasNetScorer implements AutoCloseable {
                  OrtSession.Result result = session.run(Collections.singletonMap(inputName, inputTensor))) {
 
                 float[][] logits = (float[][]) result.get(0).getValue();
-                float spoofLogit = logits[0][0];
-                float liveLogit = logits[0][1];
+                // ModelQualificationTest (§3.1): Class 0 = live (bona fide), Class 1 = spoof (attack)
+                float liveLogit = logits[0][0];
+                float spoofLogit = logits[0][1];
 
                 // Softmax probability for live class
-                float maxLogit = Math.max(spoofLogit, liveLogit);
-                float expSpoof = (float) Math.exp(spoofLogit - maxLogit);
+                float maxLogit = Math.max(liveLogit, spoofLogit);
                 float expLive = (float) Math.exp(liveLogit - maxLogit);
-                float liveProb = expLive / (expSpoof + expLive);
+                float expSpoof = (float) Math.exp(spoofLogit - maxLogit);
+                float liveProb = expLive / (expLive + expSpoof);
 
                 return Math.round(liveProb * 100.0f);
             }

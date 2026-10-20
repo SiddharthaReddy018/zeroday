@@ -7,7 +7,7 @@
 
   <groupId>io.oxalpha</groupId>
   <artifactId>face-liveness-pad</artifactId>
-  <version>0.3.0-M3</version>
+  <version>0.6.0</version>
   <packaging>jar</packaging>
 
   <name>MOSIP Face Liveness + PAD</name>
@@ -55,6 +55,12 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.0.0</version>
+        <configuration>
+          <systemPropertyVariables>
+            <!-- ADR-010: stubs are test-only; production JVMs / Android release builds do not set this -->
+            <liveness.allowStubs>true</liveness.allowStubs>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
     </plugins>
   </build>

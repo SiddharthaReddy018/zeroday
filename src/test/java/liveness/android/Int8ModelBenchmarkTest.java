@@ -3,6 +3,7 @@ package liveness.android;
 import liveness.engine.MiniFasNetScorer;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,15 +22,13 @@ public class Int8ModelBenchmarkTest {
         if (!Files.exists(modelPath)) {
             modelPath = Paths.get("datasets/models/MiniFASNetV2-SE-int8.onnx");
         }
-        if (!Files.exists(modelPath)) {
-            System.out.println("INT8 model file not found, skipping benchmark.");
-            return;
-        }
+        assumeTrue(Files.exists(modelPath), "INT8 model file not found; benchmark SKIPPED (not passed)");
 
         try (MiniFasNetScorer scorer = new MiniFasNetScorer(modelPath)) {
             assertFalse(scorer.isStubMode(), "Model must run in native ONNX mode, not stub mode");
 
-            // Synthetic [1, 3, 128, 128] float input
+            // Synthetic [1, 3, 128, 128] float input. Latency of a fixed-shape model does not depend on content.
+            // NOTE: this measures the DESKTOP JVM. Android numbers come from ScorerBenchmark on a device.
             final float[] input = new float[3 * 128 * 128];
             Random r = new Random(42);
             for (int i = 0; i < input.length; i++) {

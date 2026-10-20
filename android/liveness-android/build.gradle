@@ -41,7 +41,12 @@ android {
     // The INT8 model is kept uncompressed so it can be memory-mapped.
     androidResources { noCompress 'onnx' }
 
-    testOptions { unitTests.returnDefaultValues = true }
+    testOptions {
+        unitTests.returnDefaultValues = true
+        // ADR-010: stubs are test-only. The shared test tree uses stub scorers / stubbed same-face checks, so JVM
+        // unit tests opt in explicitly. Never set this for release builds or instrumented/production runs.
+        unitTests.all { systemProperty 'liveness.allowStubs', 'true' }
+    }
 }
 
 dependencies {

@@ -1,8 +1,10 @@
 package liveness.flow;
 
+import liveness.android.FaceEmbedder;
 import liveness.audit.AuditChain;
 import liveness.audit.AuditEvent;
 import liveness.audit.AuditLog;
+import liveness.audit.AuditSeal;
 import liveness.capture.CaptureIntegrityChecker;
 import liveness.capture.FrameFingerprint;
 import liveness.challenge.BoundChallenge;
@@ -21,6 +23,7 @@ import liveness.engine.SameFaceChecker;
 import liveness.engine.SpatialPadScorer;
 import liveness.policy.LivenessConfig;
 import liveness.policy.LivenessPolicy;
+import liveness.policy.StubPolicy;
 import liveness.util.Sha256;
 
 import java.util.ArrayList;
@@ -72,6 +75,8 @@ public final class LivenessSession {
     private int retryCount;
     private BoundChallenge currentChallenge;
     private Attestation attestation;
+    private FaceEmbedder faceEmbedder;      // optional; without it same-face fails closed (unless test-stubbed)
+    private FaceFrame lastHostFrame;        // last quality-passing host frame carrying pixels
 
     /**
      * Creates a new liveness session.
@@ -129,6 +134,8 @@ public final class LivenessSession {
         this.machine = new LivenessStateMachine();
         this.signer = Objects.requireNonNull(signer, "signer");
         this.machineUserId = Objects.requireNonNull(machineUserId, "machineUserId");
+        StubPolicy.check(padScorer.isStubMode(), "PAD scorer");
+        StubPolicy.check(sameFaceChecker.isStubbed(), "SameFaceChecker");
 
         this.issuedChallenges = new ArrayList<>();
         this.challengeEchoes = new ArrayList<>();
@@ -142,6 +149,12 @@ public final class LivenessSession {
     // =========================================================================
     // Public API — all routing from machine.current(), no boolean flags
     // =========================================================================
+
+    /**
+     * Supplies the face embedder used for the host-stream vs rCapture same-face check (S6.4).
+     * Without one, {@link #processRCapture(FaceFrame, String, long, long)} cannot compare faces and fails closed.
+     */
+    public void setFaceEmbedder(FaceEmbedder embedder) { this.faceEmbedder = embedder; }
 
     /** Starts the session: IDLE → DEVICE_CHECK. */
     public LivenessState start() {
@@ -227,6 +240,10 @@ public final class LivenessSession {
             return current;
         }
 
+        if (frame.hasPixelData()) {
+            lastHostFrame = frame;
+        }
+
         // If in POSITIONING and quality is OK, transition to PASSIVE
         if (current == LivenessState.POSITIONING) {
             LivenessState next = machine.fire(LivenessEvent.QUALITY_OK);
@@ -236,7 +253,7 @@ public final class LivenessSession {
 
         // --- 3. Spatial PAD scoring ---
         if (current == LivenessState.PASSIVE || current == LivenessState.CHALLENGE_WAIT) {
-            int padScore = padScorer.score(new float[0]); // stub: uses configured score
+            int padScore = scorePad(frame);
             spatialPad.addFrame(padScore, qr.qualityWeight());
             audit.logScore("PAD", padScore, "weight=" + qr.qualityWeight());
 
@@ -318,6 +335,28 @@ public final class LivenessSession {
                                          String returnedTransactionId,
                                          long rcaptureTimestamp,
                                          long requestTimestamp) {
+        return finishRCapture(rcaptureImageBytes, null, returnedTransactionId,
+                rcaptureTimestamp, requestTimestamp);
+    }
+
+    /**
+     * Preferred overload: the rCapture frame carries RGB pixels + dimensions, so the final PAD score and the
+     * same-face check run on real image data instead of empty placeholders.
+     */
+    public LivenessState processRCapture(FaceFrame rcaptureFrame,
+                                         String returnedTransactionId,
+                                         long rcaptureTimestamp,
+                                         long requestTimestamp) {
+        Objects.requireNonNull(rcaptureFrame, "rcaptureFrame");
+        return finishRCapture(rcaptureFrame.pixelData(), rcaptureFrame, returnedTransactionId,
+                rcaptureTimestamp, requestTimestamp);
+    }
+
+    private LivenessState finishRCapture(byte[] rcaptureImageBytes,
+                                         FaceFrame rcaptureFrame,
+                                         String returnedTransactionId,
+                                         long rcaptureTimestamp,
+                                         long requestTimestamp) {
         // Row 16: FINAL_CAPTURE → VERIFYING_FINAL
         LivenessState next = machine.fire(LivenessEvent.RCAPTURE_RETURNED);
         audit.logTransition(LivenessState.FINAL_CAPTURE, next, "RCAPTURE_RETURNED");
@@ -334,7 +373,7 @@ public final class LivenessSession {
         }
 
         // Same-face check (§6.4)
-        boolean sameFaceOk = sameFaceChecker.isSameFace(new float[0], new float[0]);
+        boolean sameFaceOk = checkSameFace(rcaptureFrame);
         if (!sameFaceOk) {
             // Row 19: VERIFYING_FINAL → RETRY_AVAILABLE
             next = machine.fire(LivenessEvent.SAME_FACE_FAIL);
@@ -343,7 +382,7 @@ public final class LivenessSession {
         }
 
         // Final PAD check on RCAPTURE image
-        int finalPadScore = padScorer.score(new float[0]);
+        int finalPadScore = scorePad(rcaptureFrame);
         LivenessPolicy.Band finalBand = policy.route(finalPadScore);
         audit.logScore("FINAL_PAD", finalPadScore, finalBand.name());
 
@@ -358,6 +397,8 @@ public final class LivenessSession {
         // All checks pass — commit
         // Row 18: VERIFYING_FINAL → SUCCESS (only path that produces attestation)
         String imageSha256 = Sha256.hex(Sha256.digest(rcaptureImageBytes)); // SHA-256 of the image (hex() alone only encodes)
+        // The commit entry is logged BEFORE the transcript hash is taken so the signed hash covers it.
+        audit.logTransition(LivenessState.VERIFYING_FINAL, LivenessState.SUCCESS, "COMMIT_CHECKS_PASS");
         String transcriptSha256 = audit.chain().latestHash();
 
         List<String> mechanisms = new ArrayList<>();
@@ -369,7 +410,7 @@ public final class LivenessSession {
                 mechanisms,
                 Collections.unmodifiableList(challengeEchoes));
 
-        attestation = new Attestation(
+        Attestation built = new Attestation(
                 subjectId, sessionId,
                 imageSha256, transcriptSha256,
                 "T1", rcaptureTimestamp,
@@ -377,10 +418,11 @@ public final class LivenessSession {
                 config.configVersion(),
                 captureMode,
                 padResult);
-        attestation.sign(signer);
+        built.sign(signer);
 
+        // Only after the machine accepts the transition is the attestation published on the session.
         next = machine.fire(LivenessEvent.COMMIT_CHECKS_PASS);
-        audit.logTransition(LivenessState.VERIFYING_FINAL, next, "COMMIT_CHECKS_PASS");
+        attestation = built;
         audit.seal();
 
         return next;
@@ -447,6 +489,15 @@ public final class LivenessSession {
     public int retryCount()              { return retryCount; }
     public BoundChallenge currentChallenge() { return currentChallenge; }
 
+    /**
+     * Seals the audit chain and signs its head. Valid for ANY outcome (success, blocked, failed, device error),
+     * so non-attested sessions also leave an anchored trail (ADR-010).
+     */
+    public AuditSeal.SignedHead signedAuditHead() {
+        audit.seal();
+        return AuditSeal.sign(audit.chain(), sessionId, signer);
+    }
+
     /** Returns the nonce-bound transaction ID for RCAPTURE requests. */
     public String boundTransactionId() {
         return captureIntegrity.boundTransactionId(sessionId);
@@ -470,6 +521,56 @@ public final class LivenessSession {
     // =========================================================================
     // Internal helpers
     // =========================================================================
+
+    private static final float[] NO_INPUT = new float[0];
+
+    /**
+     * PAD liveness score 0-100 for one frame. Stub mode ignores the input (tests/demos). With a real model the
+     * frame must carry RGB pixels; otherwise the frame is unscorable and is scored 0 (fail closed), never a pass.
+     */
+    private int scorePad(FaceFrame frame) {
+        if (padScorer.isStubMode()) {
+            return padScorer.score(NO_INPUT);
+        }
+        if (frame == null || !frame.hasPixelData()) {
+            audit.logScore("PAD", 0, "UNSCORABLE: no pixel data");
+            return 0;
+        }
+        try {
+            float[] in = liveness.engine.PadPreprocessor.prepare(
+                    frame.pixelData(), frame.widthPx(), frame.heightPx(),
+                    frame.faceBboxX(), frame.faceBboxY(), frame.faceBboxWidth(), frame.faceBboxHeight());
+            return padScorer.score(in);
+        } catch (IllegalArgumentException e) {
+            audit.logScore("PAD", 0, "UNSCORABLE: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Same-face between the last host frame and the rCapture frame. Real comparison needs an embedder, a host
+     * frame and an rCapture frame with pixels; if any is missing the comparison is delegated with empty vectors,
+     * which fails closed (distance 1.0) unless a test explicitly stubbed the checker.
+     */
+    private boolean checkSameFace(FaceFrame rcaptureFrame) {
+        StubPolicy.check(sameFaceChecker.isStubbed(), "SameFaceChecker");
+        if (faceEmbedder != null && rcaptureFrame != null && rcaptureFrame.hasPixelData()
+                && lastHostFrame != null && lastHostFrame.hasPixelData()) {
+            try {
+                float[] a = faceEmbedder.embed(lastHostFrame.pixelData(),
+                        lastHostFrame.widthPx(), lastHostFrame.heightPx());
+                float[] b = faceEmbedder.embed(rcaptureFrame.pixelData(),
+                        rcaptureFrame.widthPx(), rcaptureFrame.heightPx());
+                if (a == null || b == null || a.length == 0 || a.length != b.length) {
+                    return false;
+                }
+                return sameFaceChecker.isSameFace(a, b);
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+        return sameFaceChecker.isSameFace(new float[0], new float[0]);
+    }
 
     private LivenessState fireBandEvent(LivenessState from, LivenessEvent event) {
         LivenessState next = machine.fire(event);

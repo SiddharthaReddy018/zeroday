@@ -83,7 +83,8 @@ public final class EnvironmentIntegrityChecker {
         for (String pkg : XPOSED_PACKAGES) if (probe.isPackageInstalled(pkg)) { f.add(Finding.HOOK_XPOSED); break; }
         for (String m : probe.loadedModules()) {
             String l = m == null ? "" : m.toLowerCase();
-            if (l.contains("frida") || l.contains("gum-js-loop") || l.contains("gmain")) {
+            // Tightened (ADR-010 / 4.8): avoid matching standalone "gmain" which occurs in legitimate GLib
+            if (l.contains("frida") || l.contains("gum-js-loop") || (l.contains("gmain") && l.contains("gum"))) {
                 f.add(Finding.HOOK_FRIDA);
             }
             if (l.contains("xposed") || l.contains("lspd") || l.contains("edxp")) f.add(Finding.HOOK_XPOSED);

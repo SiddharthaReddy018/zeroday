@@ -75,16 +75,21 @@ public final class IadMetrics {
         sb.append("## Injection Attack Detection Metrics (CEN/TS 18099 concepts)\n\n");
         sb.append("| Attack Type | Attempts | Detected/Rejected | Rate |\n");
         sb.append("|---|---|---|---|\n");
-        sb.append(String.format("| Freeze detection | %d | %d | %.4f |\n",
-                freezeTotal, freezeDetected, freezeDetectionRate()));
-        sb.append(String.format("| Loop replay detection | %d | %d | %.4f |\n",
-                loopTotal, loopDetected, loopDetectionRate()));
-        sb.append(String.format("| Nonce-swap rejection | %d | %d | %.4f |\n",
-                nonceSwapTotal, nonceSwapRejected, nonceSwapRejectionRate()));
-        sb.append(String.format("| False IAD (legitimate) | %d | %d | %.4f |\n",
-                legitimateTotal, legitimateFalseAlarms, falseIadRate()));
+        row(sb, "Freeze detection", freezeTotal, freezeDetected, freezeDetectionRate());
+        row(sb, "Loop replay detection", loopTotal, loopDetected, loopDetectionRate());
+        row(sb, "Nonce-swap rejection", nonceSwapTotal, nonceSwapRejected, nonceSwapRejectionRate());
+        row(sb, "False IAD (legitimate)", legitimateTotal, legitimateFalseAlarms, falseIadRate());
         sb.append("\n> These are detection rates, NOT APCER values (§12.2).\n");
         return sb.toString();
+    }
+
+    /** R9: a row with no trials is "not measured", never a 0.0000 rate. */
+    private static void row(StringBuilder sb, String name, int total, int hit, double rate) {
+        if (total == 0) {
+            sb.append(String.format("| %s | 0 | - | not measured (no trials in this run) |\n", name));
+        } else {
+            sb.append(String.format("| %s | %d | %d | %.4f |\n", name, total, hit, rate));
+        }
     }
 
     // ── Accessors for testing ──────────────────────────────────────────

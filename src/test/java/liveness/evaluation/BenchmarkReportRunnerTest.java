@@ -1,90 +1,76 @@
 package liveness.evaluation;
 
+import liveness.engine.MiniFasNetScorer;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
 /**
- * Executes the M5 evaluation harness on the generated benchmark manifest
- * and produces the evaluation report.
+ * M5 evaluation on the benchmark manifest using the REAL ONNX model. Reported as SKIPPED (not passed) when the
+ * manifest or model is not on disk. Model path: -Dpad.model=... or datasets/models/MiniFASNetV2-SE.onnx.
+ * IAD rows are NOT populated here: they are measured by FrameSequenceMonitorTest / SbiIntentBridgeTest and must
+ * be reported from those runs, never typed in.
  */
 public class BenchmarkReportRunnerTest {
 
     @Test
-    public void generateEvaluationReportFromManifest() throws IOException {
+    public void generateEvaluationReportFromManifest() throws Exception {
         Path manifestPath = Paths.get("datasets/manifests/evaluation_benchmark_manifest.csv");
-        if (!Files.exists(manifestPath)) {
-            // Skip if benchmark manifest hasn't been generated in this environment
-            return;
-        }
+        Path modelPath = Paths.get(System.getProperty("pad.model", "datasets/models/MiniFASNetV2-SE.onnx"));
+        assumeTrue(Files.exists(manifestPath), "benchmark manifest not present: " + manifestPath);
+        assumeTrue(Files.exists(modelPath), "PAD model not present: " + modelPath);
 
         List<ManifestEntry> entries = ManifestLoader.load(manifestPath);
         assertTrue(entries.size() > 1000, "Manifest should have >1000 entries");
 
-        // Evaluator scorer using realistic PAD score distribution:
-        // Bona fide: mean ~82, std ~8 (most >= 70, ~3% BPCER)
-        // Print attack: mean ~20, std ~10
-        // Screen attack: mean ~35, std ~15 (few break through)
-        // Video attack: mean ~30, std ~12
-        EvaluationHarness.Scorer scorer = new EvaluationHarness.Scorer() {
-            @Override
-            public int score(ManifestEntry entry) {
-                int hash = Math.abs(entry.path().hashCode());
-                if (entry.isBonafide()) {
-                    // 97% bona fide pass at threshold 70
-                    int offset = (hash % 25) - 3; // -3 to +21
-                    return Math.min(100, Math.max(50, 78 + offset));
-                } else {
-                    String species = entry.species() != null ? entry.species() : "";
-                    if ("screen".equals(species)) {
-                        // Few screen attacks challenge the threshold
-                        int base = (hash % 100 < 5) ? 72 : 30 + (hash % 25);
-                        return Math.min(100, Math.max(0, base));
-                    } else if ("print".equals(species)) {
-                        return Math.min(100, Math.max(0, 15 + (hash % 25)));
-                    } else {
-                        return Math.min(100, Math.max(0, 20 + (hash % 30)));
-                    }
-                }
-            }
-        };
+        try (MiniFasNetScorer model = new MiniFasNetScorer(modelPath)) {
+            Path sidecar = Paths.get(manifestPath.toString() + ".bbox.csv");
+            // baseDir is datasets/ (one level up from manifests/) so manifest paths like onot/digital/... resolve
+            Path datasetsDir = manifestPath.getParent().getParent();
+            OnnxManifestScorer onnx = new OnnxManifestScorer(model, datasetsDir, sidecar);
+            EvaluationHarness harness = new EvaluationHarness(onnx, 70);
+            EvaluationHarness.EvaluationResult result = harness.run(entries);
 
-        EvaluationHarness harness = new EvaluationHarness(scorer, 70);
-        EvaluationHarness.EvaluationResult result = harness.run(entries);
+            result.latency().mergeFrom(onnx.psPd());
 
-        // Validate Rule of 30
-        assertTrue(result.padMetrics().ruleOf30Satisfied(),
-                "Evaluation must satisfy Rule of 30 on bona fide subjects");
+            // R9: provenance is generated from what actually ran, never typed in.
+            long bf = entries.stream().filter(ManifestEntry::isBonafide).count();
+            long atk = entries.stream().filter(ManifestEntry::isAttack).count();
+            result.report()
+                    .addProvenance("Scorer: real MiniFASNetV2-SE via ONNX Runtime (model " + modelPath.getFileName() + ").")
+                    .addProvenance("Manifest: " + manifestPath.getFileName() + " with " + bf + " bona fide and "
+                            + atk + " attack entries; scored split = test only.")
+                    .addProvenance(onnx.localisationSummary())
+                    .addProvenance("Bona fide images in this manifest are STILL images (ADR-008: ONOT synthetic ICAO "
+                            + "set if used). BPCER on stills is NOT a live-presentation BPCER; do not quote it as one.")
+                    .addProvenance("A 0 observed errors result is bounded by its CI upper limit, not equal to zero risk.")
+                    .addProvenance("PS-PD = rows ps_pd_* in the latency table: PAD preprocessing + ONNX inference per image, "
+                            + "measured on this machine (" + System.getProperty("os.name") + " "
+                            + System.getProperty("os.arch") + ", Java " + System.getProperty("java.version")
+                            + "), not on a phone. Row pad_scoring additionally includes image decoding and is not PS-PD. "
+                            + "Warm-up samples are included, not discarded.")
+                    .addNotMeasured("APNRR / BPNRR",
+                            "Need live presentations through the capture subsystem (device timeout, no response). "
+                            + "A still-image manifest has no capture step, so no response can occur or be observed.")
+                    .addNotMeasured("APAR",
+                            "Needs live attack presentations through the real capture pipeline (quality gate on device "
+                            + "landmarks/frames). Stills cannot show whether a sufficient-quality sample would have been acquired.");
+            assertTrue(result.report().validateProvenance().isEmpty(), "provenance missing");
 
-        // Validate R6 contract
-        List<String> violations = result.report().validateContract();
-        assertTrue(violations.isEmpty(), "Report contract violations: " + violations);
+            assertTrue(result.padMetrics().ruleOf30Satisfied(), "Rule of 30 must hold");
+            List<String> violations = result.report().validateContract();
+            assertTrue(violations.isEmpty(), "Report contract violations: " + violations);
 
-        // Populate sample IAD metrics for report completeness
-        result.iadMetrics().recordFreezeAttempt(true);
-        result.iadMetrics().recordFreezeAttempt(true);
-        result.iadMetrics().recordFreezeAttempt(true);
-        result.iadMetrics().recordLoopAttempt(true);
-        result.iadMetrics().recordLoopAttempt(true);
-        result.iadMetrics().recordNonceSwapAttempt(true);
-        result.iadMetrics().recordLegitimateSession(false);
-        result.iadMetrics().recordLegitimateSession(false);
-
-        String markdown = result.report().generate();
-        assertNotNull(markdown);
-        assertTrue(markdown.contains("Per-Species APCER"));
-        assertTrue(markdown.contains("Worst-species headline APCER"));
-        assertTrue(markdown.contains("Honest Coverage Statement"));
-
-        // Save report to target/evaluation-report.md
-        Path reportOut = Paths.get("target/TEST_REPORT.md");
-        Files.createDirectories(reportOut.getParent());
-        Files.writeString(reportOut, markdown);
-        System.out.println("Evaluation report successfully written to: " + reportOut.toAbsolutePath());
+            String markdown = result.report().generate();
+            Path out = Paths.get("target/TEST_REPORT.md");
+            Files.createDirectories(out.getParent());
+            Files.write(out, markdown.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            System.out.println("Evaluation report written to: " + out.toAbsolutePath());
+        }
     }
 }

@@ -30,6 +30,9 @@ public final class SameFaceChecker {
         return 1.0 - (dotProduct / (Math.sqrt(normA) * Math.sqrt(normB)));
     }
 
+    public boolean isStubbed() { return stubResult != null; }
+
+    /** TEST/DEMO ONLY: guarded at runtime by {@link liveness.policy.StubPolicy}. */
     public void setStubResult(boolean result) {
         this.stubResult = result;
     }

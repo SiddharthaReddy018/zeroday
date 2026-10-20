@@ -50,8 +50,11 @@ public final class SbiJwtVerifier {
         this.clock = Instant::now;
     }
 
-    /** DEVELOPMENT ONLY: accepts any token. Never ship this in a production configuration. */
-    public static SbiJwtVerifier disabledForDevelopment() { return new SbiJwtVerifier(); }
+    /** DEVELOPMENT ONLY: accepts any token. Never ship this in a production configuration. Guarded by StubPolicy. */
+    public static SbiJwtVerifier disabledForDevelopment() {
+        liveness.policy.StubPolicy.check(true, "SbiJwtVerifier.disabledForDevelopment()");
+        return new SbiJwtVerifier();
+    }
 
     public boolean isDisabled() { return disabled; }
 

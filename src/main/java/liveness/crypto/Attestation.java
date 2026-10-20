@@ -9,8 +9,9 @@ import java.util.Objects;
  * <p>
  * Produced ONLY from {@code VERIFYING_FINAL -> SUCCESS}.
  * <p>
- * Canonical string for signing:
- * {@code subjectId|sessionId|verdict|imageSha256|transcriptSha256|deviceTier|captureTimestamp|createdAtEpochMs}
+ * Canonical string for signing (fields escaped, pipe-delimited):
+ * {@code subjectId|sessionId|verdict|imageSha256|transcriptSha256|deviceTier|captureTimestamp|createdAtEpochMs|
+ * modelVersion|configVersion|mode|padDecision|padScore|mechanisms|challengeEchoes|signerPublicKey}
  * <p>
  * {@code imageSha256} is validated non-null before {@code sign()} — intentional NPE if null.
  */
@@ -29,6 +30,7 @@ public final class Attestation {
     private final PadResult pad;
     private final long createdAtEpochMs;
     private byte[] signature;
+    private String signerPublicKeyB64;
 
     public Attestation(String subjectId, String sessionId,
                        String imageSha256, String transcriptSha256,
@@ -54,10 +56,33 @@ public final class Attestation {
      * The canonical string used for ECDSA signing.
      */
     public String canonical() {
-        return subjectId + "|" + sessionId + "|" + verdict + "|" + imageSha256
-                + "|" + transcriptSha256 + "|" + deviceTier + "|" + captureTimestamp
-                + "|" + createdAtEpochMs;
+        StringBuilder sb = new StringBuilder();
+        field(sb, subjectId); field(sb, sessionId); field(sb, verdict); field(sb, imageSha256);
+        field(sb, transcriptSha256); field(sb, deviceTier); field(sb, String.valueOf(captureTimestamp));
+        field(sb, String.valueOf(createdAtEpochMs));
+        // Fields added so that model, config, mode and the PAD result are tamper-evident too.
+        field(sb, modelVersion); field(sb, String.valueOf(configVersion)); field(sb, mode);
+        field(sb, pad.decision()); field(sb, String.valueOf(pad.score()));
+        field(sb, String.join(",", pad.mechanism()));
+        StringBuilder echo = new StringBuilder();
+        for (ChallengeEcho e : pad.challengeEcho()) {
+            if (echo.length() > 0) echo.append(',');
+            echo.append(e.action()).append(':').append(e.latencyMs());
+        }
+        field(sb, echo.toString());
+        field(sb, signerPublicKeyB64 == null ? "" : signerPublicKeyB64);
+        sb.setLength(sb.length() - 1); // drop trailing delimiter
+        return sb.toString();
     }
+
+    /** Appends an escaped field + '|'. '\\' and '|' are escaped so fields cannot shift the delimiter layout. */
+    private static void field(StringBuilder sb, String v) {
+        String x = v == null ? "" : v;
+        sb.append(x.replace("\\", "\\\\").replace("|", "\\|")).append('|');
+    }
+
+    /** Base64 X.509 SubjectPublicKeyInfo of the signing key; set by sign() and covered by the signature. */
+    public String signerPublicKeyB64() { return signerPublicKeyB64; }
 
     /**
      * Signs this attestation.
@@ -65,6 +90,7 @@ public final class Attestation {
      * @return this attestation (for chaining)
      */
     public Attestation sign(EcdsaSignerStub signer) {
+        this.signerPublicKeyB64 = java.util.Base64.getEncoder().encodeToString(signer.publicKey().getEncoded());
         this.signature = signer.sign(canonical());
         return this;
     }
