@@ -135,16 +135,18 @@ public final class IadMetrics {
         StringBuilder sb = new StringBuilder();
         sb.append("## Injection Attack Detection Metrics (CEN/TS 18099 concepts)\n\n");
         sb.append("> Results are synthetic, mechanism-level, not real-camera.\n\n");
-        sb.append("| Attack Type | Attempts | Detected/Rejected | Rate |\n");
-        sb.append("|---|---|---|---|\n");
+        sb.append("| Attack Type | Attempts | Detected/Rejected | Rate | 95% Wilson CI |\n");
+        sb.append("|---|---|---|---|---|");
+        sb.append("\n");
         row(sb, "Freeze detection", freezeTotal, freezeDetected, freezeDetectionRate());
         row(sb, "Loop replay detection", loopTotal, loopDetected, loopDetectionRate());
         row(sb, "Nonce-swap rejection", nonceSwapTotal, nonceSwapRejected, nonceSwapRejectionRate());
         row(sb, "False IAD (legitimate)", legitimateTotal, legitimateFalseAlarms, falseIadRate());
         sb.append("\n> These are detection rates, NOT APCER values (Section 12.2).\n");
+        sb.append("> Known limits of the loop rule (synthetic probes): short or low-motion loops (about 3 px/frame or less) are mostly missed;\n");
+        sb.append("> periodic or large legitimate motion can look like a loop. Loop detection is a soft signal until real-camera tuning (Part 2 X13).\n");
         if (freezeTotal > 0 || loopTotal > 0 || nonceSwapTotal > 0) {
             sb.append("\n");
-            sb.append(String.format("- **Mechanism coverage:** %.1f%%\n", mechanismCoverage() * 100.0));
             sb.append(String.format("- **Overall IAD bypass rate:** %.4f\n", bypassRate()));
             if (!Double.isNaN(averageDetectionLatencyMs())) {
                 sb.append(String.format("- **Average detection latency:** %.2f ms\n", averageDetectionLatencyMs()));
@@ -156,9 +158,10 @@ public final class IadMetrics {
     /** R9: a row with no trials is "not measured", never a 0.0000 rate. */
     private static void row(StringBuilder sb, String name, int total, int hit, double rate) {
         if (total == 0) {
-            sb.append(String.format("| %s | 0 | - | not measured (no trials in this run) |\n", name));
+            sb.append(String.format("| %s | 0 | - | not measured (no trials in this run) | - |\n", name));
         } else {
-            sb.append(String.format("| %s | %d | %d | %.4f |\n", name, total, hit, rate));
+            WilsonConfidenceInterval.Interval ci = WilsonConfidenceInterval.compute(hit, total);
+            sb.append(String.format("| %s | %d | %d | %.4f | %s |\n", name, total, hit, rate, ci));
         }
     }
 

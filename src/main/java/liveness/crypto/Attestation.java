@@ -41,7 +41,7 @@ public final class Attestation {
                 String modelVersion, int configVersion,
                 String mode, PadResult pad) {
         this(subjectId, sessionId, imageSha256, transcriptSha256, null,
-                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, -1);
+                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, 0); // legacy overload: no audit count supplied; 0 fails closed against any non-empty chain
     }
 
     Attestation(String subjectId, String sessionId,
@@ -74,6 +74,9 @@ public final class Attestation {
         this.mode = Objects.requireNonNull(mode, "mode");
         this.pad = Objects.requireNonNull(pad, "pad");
         this.createdAtEpochMs = System.currentTimeMillis();
+        if (auditEntryCount < 0) {
+            throw new IllegalArgumentException("auditEntryCount must be >= 0, got: " + auditEntryCount);
+        }
         this.auditEntryCount = auditEntryCount;
     }
 
@@ -87,7 +90,7 @@ public final class Attestation {
             String modelVersion, int configVersion,
             String mode, PadResult pad, Signer signer) {
         return createFromSuccessSession(subjectId, sessionId, imageSha256, transcriptSha256,
-                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, -1, signer);
+                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, 0, signer); // legacy overload: see above
     }
 
     public static Attestation createFromSuccessSession(
@@ -129,9 +132,7 @@ public final class Attestation {
         field(sb, subjectId); field(sb, sessionId); field(sb, verdict); field(sb, imageSha256);
         field(sb, transcriptSha256);
         field(sb, auditHeadHash);
-        if (auditEntryCount >= 0) {
-            field(sb, String.valueOf(auditEntryCount));
-        }
+        field(sb, String.valueOf(auditEntryCount));
         field(sb, deviceTier); field(sb, String.valueOf(captureTimestamp));
         field(sb, String.valueOf(createdAtEpochMs));
         // Fields added so that model, config, mode and the PAD result are tamper-evident too.
@@ -190,7 +191,7 @@ public final class Attestation {
     public boolean verifyAuditChain(liveness.audit.AuditChain chain) {
         if (chain == null) return false;
         if (!chain.verify()) return false;
-        if (auditEntryCount >= 0 && chain.size() != auditEntryCount) return false;
+        if (chain.size() != auditEntryCount) return false;
         return Objects.equals(auditHeadHash(), chain.latestHash());
     }
 

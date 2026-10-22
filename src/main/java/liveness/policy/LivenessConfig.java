@@ -52,6 +52,7 @@ public final class LivenessConfig {
     private final int loopHammingThreshold;
     private final int freezeHammingThreshold;
     private final int loopMinSegmentMotionBits;
+    private final boolean loopReplayHardFail;
     private final long rcaptureFreshnessWindowMs;
 
 
@@ -89,6 +90,7 @@ public final class LivenessConfig {
         this.loopHammingThreshold = b.loopHammingThreshold;
         this.freezeHammingThreshold = b.freezeHammingThreshold;
         this.loopMinSegmentMotionBits = b.loopMinSegmentMotionBits;
+        this.loopReplayHardFail = b.loopReplayHardFail;
         this.rcaptureFreshnessWindowMs = b.rcaptureFreshnessWindowMs;
         this.configVersion = b.configVersion;
         this.challengeProfile = b.challengeProfile;
@@ -123,6 +125,8 @@ public final class LivenessConfig {
     public int loopHammingThreshold() { return loopHammingThreshold; }
     public int freezeHammingThreshold() { return freezeHammingThreshold; }
     public int loopMinSegmentMotionBits() { return loopMinSegmentMotionBits; }
+    /** When false (default), LOOP_REPLAY is a soft signal: logged and routed to an active challenge. */
+    public boolean loopReplayHardFail() { return loopReplayHardFail; }
     public long rcaptureFreshnessWindowMs() { return rcaptureFreshnessWindowMs; }
     public int configVersion() { return configVersion; }
     public String challengeProfile() { return challengeProfile; }
@@ -169,6 +173,7 @@ public final class LivenessConfig {
         private int loopHammingThreshold = 6;
         private int freezeHammingThreshold = 2;
         private int loopMinSegmentMotionBits = 3;
+        private boolean loopReplayHardFail = false;
         private long rcaptureFreshnessWindowMs = 30000;
         private int configVersion = 1;
         private String challengeProfile = "DEFAULT";
@@ -210,6 +215,7 @@ public final class LivenessConfig {
         public Builder loopHammingThreshold(int v)     { this.loopHammingThreshold = v; return this; }
         public Builder freezeHammingThreshold(int v)   { this.freezeHammingThreshold = v; return this; }
         public Builder loopMinSegmentMotionBits(int v)  { this.loopMinSegmentMotionBits = v; return this; }
+        public Builder loopReplayHardFail(boolean v)    { this.loopReplayHardFail = v; return this; }
         public Builder rcaptureFreshnessWindowMs(long v) { this.rcaptureFreshnessWindowMs = v; return this; }
         public Builder configVersion(int v)            { this.configVersion = v; return this; }
         public Builder challengeProfile(String v)      { this.challengeProfile = Objects.requireNonNull(v); return this; }

@@ -72,6 +72,8 @@ public final class LivenessSession {
     private final List<Attestation.ChallengeEcho> challengeEchoes;
     private final List<float[]> livenessEmbeddings;
     private int challengeCount;
+    /** Set when a LOOP_REPLAY signal was seen and loopReplayHardFail is off: bona fide must then pass an active challenge. */
+    private boolean loopSuspected;
     private int retryCount;
     private BoundChallenge currentChallenge;
     private Attestation attestation;
@@ -209,6 +211,16 @@ public final class LivenessSession {
                 String.valueOf(frame.deviceId()),
                 frame.signature());
 
+        if (integrityViolation.isPresent()
+                && "LOOP_REPLAY".equals(integrityViolation.get())
+                && !config.loopReplayHardFail()) {
+            // Soft policy: loop detection is unvalidated on real cameras (Part 2 X13), so it is a
+            // signal, not a verdict. Log it and require a completed active challenge to pass.
+            audit.logScore("INTEGRITY_SOFT", 0, "LOOP_REPLAY suspected: active challenge required");
+            loopSuspected = true;
+            integrityViolation = Optional.empty();
+        }
+
         if (integrityViolation.isPresent()) {
             audit.logScore("INTEGRITY", 0, integrityViolation.get());
             LivenessState next = machine.fire(LivenessEvent.IAD_FAILURE);
@@ -275,6 +287,15 @@ public final class LivenessSession {
                 LivenessPolicy.Band band = result.band();
                 switch (band) {
                     case CLEAR_BONA_FIDE:
+                        if (loopSuspected && challengeCount == 0) {
+                            // Loop suspected: a passive pass alone is not enough.
+                            if (config.activeEnabled()) {
+                                audit.logScore("LOOP_SUSPECT_CHALLENGE", score, "Routing to active challenge");
+                                return fireBandEvent(current, LivenessEvent.UNCERTAIN);
+                            }
+                            audit.logScore("LOOP_SUSPECT_REJECT", score, "Active disabled: loop-suspected session cannot pass");
+                            return fireBandEvent(current, LivenessEvent.ENGINE_ERROR);
+                        }
                         return fireBandEvent(current, LivenessEvent.CLEAR_BONA_FIDE);
                     case UNCERTAIN:
                         if (result.reason() != null && result.reason().startsWith("Attack pending persistence")) {
