@@ -139,6 +139,53 @@ class EnvironmentIntegrityCheckerTest {
         assertTrue(r.reason().startsWith("INTEGRITY_FAILURE"));
     }
 
+    @Test
+    void productionProfileDisallowsAdbAndTestKeys() {
+        FakeProbe pAdb = new FakeProbe();
+        pAdb.adb = true;
+        EnvironmentIntegrityChecker prodAdb = EnvironmentIntegrityChecker.forProduction(pAdb);
+        assertEquals(EnvironmentIntegrityChecker.Profile.PRODUCTION, prodAdb.profile());
+        EnvironmentIntegrityChecker.Result rAdb = prodAdb.check();
+        assertTrue(rAdb.findings().contains(Finding.ADB_ENABLED));
+        assertTrue(rAdb.isCompromised(), "Production profile must disallow ADB");
+
+        FakeProbe pTestKeys = new FakeProbe();
+        pTestKeys.tags = "test-keys";
+        EnvironmentIntegrityChecker prodKeys = EnvironmentIntegrityChecker.forProduction(pTestKeys);
+        EnvironmentIntegrityChecker.Result rKeys = prodKeys.check();
+        assertTrue(rKeys.findings().contains(Finding.ROOT_TEST_KEYS));
+        assertTrue(rKeys.isCompromised(), "Production profile must disallow test-keys");
+    }
+
+    @Test
+    void developmentProfileAllowsAdbWhenConfigured() {
+        FakeProbe pAdb = new FakeProbe();
+        pAdb.adb = true;
+
+        // Dev profile with allowAdb=true
+        EnvironmentIntegrityChecker devAllow = EnvironmentIntegrityChecker.forDevelopment(pAdb, true);
+        assertEquals(EnvironmentIntegrityChecker.Profile.DEVELOPMENT, devAllow.profile());
+        EnvironmentIntegrityChecker.Result rAllow = devAllow.check();
+        assertTrue(rAllow.findings().contains(Finding.ADB_ENABLED), "Finding should still be recorded");
+        assertFalse(rAllow.isCompromised(), "Dev profile with allowAdb=true should not block on ADB");
+
+        // Dev profile with allowAdb=false
+        EnvironmentIntegrityChecker devDisallow = EnvironmentIntegrityChecker.forDevelopment(pAdb, false);
+        EnvironmentIntegrityChecker.Result rDisallow = devDisallow.check();
+        assertTrue(rDisallow.isCompromised(), "Dev profile with allowAdb=false must block on ADB");
+
+        // Dev profile still disallows test-keys and su binary even when ADB is allowed
+        FakeProbe pKeys = new FakeProbe();
+        pKeys.tags = "test-keys";
+        EnvironmentIntegrityChecker devKeys = EnvironmentIntegrityChecker.forDevelopment(pKeys, true);
+        assertTrue(devKeys.check().isCompromised(), "Dev profile must still disallow test-keys");
+
+        FakeProbe pSu = new FakeProbe();
+        pSu.files.add("/system/bin/su");
+        EnvironmentIntegrityChecker devSu = EnvironmentIntegrityChecker.forDevelopment(pSu, true);
+        assertTrue(devSu.check().isCompromised(), "Dev profile must still disallow SU binary");
+    }
+
     // ---- the composite adapter fails closed on a compromised host ----
 
     private static CameraXDeviceAdapter camera() { return new CameraXDeviceAdapter("c", oneFace()); }

@@ -107,4 +107,9 @@ public final class AuditLog {
     public void seal() {
         chain.seal();
     }
+
+    /** Exports the sealed audit trail. */
+    public String exportTrail() {
+        return chain.exportTrail();
+    }
 }

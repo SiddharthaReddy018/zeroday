@@ -109,14 +109,11 @@ public final class SbiJwtVerifier {
         if (disabled) return payload;
 
         if (!"RS256".equals(header.get("alg"))) throw new VerificationException("UNSUPPORTED_ALG");
-        X509Certificate leaf = leafFromHeader(header);
+        List<X509Certificate> chain = chainFromHeader(header);
+        X509Certificate leaf = chain.get(0);
         Instant now = clock.get();
-        try {
-            leaf.checkValidity(Date.from(now));
-        } catch (Exception e) {
-            throw new VerificationException("CERT_EXPIRED_OR_NOT_YET_VALID");
-        }
-        if (!isTrusted(leaf, now)) throw new VerificationException("UNTRUSTED_CERT");
+        validateChain(chain, now);
+
         try {
             Signature s = Signature.getInstance("SHA256withRSA");
             s.initVerify(leaf.getPublicKey());
@@ -127,35 +124,105 @@ public final class SbiJwtVerifier {
         } catch (Exception e) {
             throw new VerificationException("BAD_SIGNATURE");
         }
+
+        verifyNestedDigitalId(payload);
         return payload;
     }
 
     @SuppressWarnings("unchecked")
-    private static X509Certificate leafFromHeader(Map<String, Object> header) throws VerificationException {
+    private static List<X509Certificate> chainFromHeader(Map<String, Object> header) throws VerificationException {
         Object x5c = header.get("x5c");
-        String first;
-        if (x5c instanceof List && !((List<Object>) x5c).isEmpty()) first = String.valueOf(((List<Object>) x5c).get(0));
-        else if (x5c instanceof String) first = (String) x5c;
-        else throw new VerificationException("NO_CERTIFICATE");
-        try {
-            return parseCertificate(Base64.getDecoder().decode(first));
-        } catch (IllegalArgumentException e) {
-            throw new VerificationException("BAD_CERTIFICATE");
+        List<X509Certificate> chain = new ArrayList<>();
+        if (x5c instanceof List) {
+            for (Object o : (List<Object>) x5c) {
+                if (o != null) {
+                    chain.add(parseCertificate(Base64.getDecoder().decode(String.valueOf(o))));
+                }
+            }
+        } else if (x5c instanceof String) {
+            chain.add(parseCertificate(Base64.getDecoder().decode((String) x5c)));
+        }
+        if (chain.isEmpty()) {
+            throw new VerificationException("NO_CERTIFICATE");
+        }
+        return chain;
+    }
+
+    private void validateChain(List<X509Certificate> chain, Instant now) throws VerificationException {
+        Date nowDate = Date.from(now);
+        for (X509Certificate cert : chain) {
+            try {
+                cert.checkValidity(nowDate);
+            } catch (Exception e) {
+                throw new VerificationException("CERT_EXPIRED_OR_NOT_YET_VALID");
+            }
+        }
+
+        X509Certificate leaf = chain.get(0);
+        boolean[] leafKeyUsage = leaf.getKeyUsage();
+        if (leafKeyUsage != null) {
+            // Bit 0 = digitalSignature, Bit 1 = nonRepudiation
+            if (!leafKeyUsage[0] && !leafKeyUsage[1]) {
+                throw new VerificationException("INVALID_KEY_USAGE");
+            }
+        }
+
+        for (int i = 0; i < chain.size() - 1; i++) {
+            X509Certificate child = chain.get(i);
+            X509Certificate issuer = chain.get(i + 1);
+
+            // BasicConstraints check: must be CA
+            if (issuer.getBasicConstraints() == -1) {
+                throw new VerificationException("NON_CA_INTERMEDIATE");
+            }
+            boolean[] issuerUsage = issuer.getKeyUsage();
+            if (issuerUsage != null && !issuerUsage[5]) { // keyCertSign
+                throw new VerificationException("NON_CA_INTERMEDIATE");
+            }
+            try {
+                child.verify(issuer.getPublicKey());
+            } catch (Exception e) {
+                throw new VerificationException("CHAIN_VERIFICATION_FAILED");
+            }
+        }
+
+        X509Certificate top = chain.get(chain.size() - 1);
+        boolean trusted = false;
+        for (X509Certificate anchor : anchors) {
+            try {
+                anchor.checkValidity(nowDate);
+                if (top.equals(anchor)) {
+                    trusted = true;
+                    break;
+                }
+                if (anchor.getBasicConstraints() == -1) {
+                    continue;
+                }
+                top.verify(anchor.getPublicKey());
+                trusted = true;
+                break;
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (!trusted) {
+            throw new VerificationException("UNTRUSTED_CERT");
         }
     }
 
-    private boolean isTrusted(X509Certificate leaf, Instant now) {
-        for (X509Certificate a : anchors) {
-            try {
-                if (a.equals(leaf)) return true;
-                a.checkValidity(Date.from(now));
-                PublicKey k = a.getPublicKey();
-                leaf.verify(k);
-                return true;
-            } catch (Exception ignored) {
-                // try next anchor
+    private void verifyNestedDigitalId(String payloadJson) throws VerificationException {
+        try {
+            Map<String, Object> map = MiniJson.parseObject(payloadJson);
+            Object did = map.get("digitalId");
+            if (did instanceof String) {
+                String didStr = (String) did;
+                if (didStr.split("\\.", -1).length == 3) {
+                    verify(didStr);
+                }
             }
+        } catch (VerificationException e) {
+            throw new VerificationException("NESTED_DIGITAL_ID_INVALID: " + e.getMessage());
+        } catch (Exception ignored) {
         }
-        return false;
     }
 }

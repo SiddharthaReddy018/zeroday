@@ -65,7 +65,13 @@ dependencies {
     implementation 'androidx.activity:activity:1.8.2'
     implementation 'androidx.lifecycle:lifecycle-common-java8:2.7.0'
 
-    // Flutter embedding (compileOnly: the host Flutter app provides it)
+    // Flutter embedding (compileOnly: the host Flutter app provides it at runtime).
+    // REPLACE_WITH_ENGINE_HASH: Replace with the 40-character git commit hash of your Flutter SDK engine.
+    // How to obtain your Flutter engine hash:
+    //   1. Run `flutter --version -v` and find the "Engine • revision <hash>" field.
+    //   2. Or read the file directly: `cat $FLUTTER_ROOT/bin/internal/engine.version`
+    // Example:
+    //   compileOnly 'io.flutter:flutter_embedding_release:1.0.0-abd98c39e31af59a188e745495b322fa4d00387b'
     compileOnly 'io.flutter:flutter_embedding_release:1.0.0-REPLACE_WITH_ENGINE_HASH'
 
     // Unit tests (JVM, no device)

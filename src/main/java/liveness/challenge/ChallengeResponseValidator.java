@@ -100,6 +100,27 @@ public final class ChallengeResponseValidator {
     }
 
     /**
+     * Validates timing and freshness for an already-detected challenge response (§6.3, S9).
+     *
+     * @param challenge the bound challenge
+     * @param responseTimeMs when the response was detected (epoch ms)
+     * @return validation result
+     */
+    public ValidationResult validateTiming(BoundChallenge challenge, long responseTimeMs) {
+        Objects.requireNonNull(challenge, "challenge");
+        if (challenge.isExpired(responseTimeMs)) {
+            return ValidationResult.reject("EXPIRED");
+        }
+        long latencyMs = responseTimeMs - challenge.issuedAtMs();
+        boolean suspicious = latencyMs < MIN_PLAUSIBLE_LATENCY_MS
+                || latencyMs > MAX_PLAUSIBLE_LATENCY_MS;
+        if (suspicious) {
+            return ValidationResult.acceptWithSuspiciousLatency();
+        }
+        return ValidationResult.accept();
+    }
+
+    /**
      * Validates a compound challenge sequence in order.
      *
      * @param challenge       the bound challenge

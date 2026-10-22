@@ -8,7 +8,7 @@ import liveness.capture.SessionTransactionBinder;
 import liveness.challenge.ChallengeGenerator;
 import liveness.core.FaceFrame;
 import liveness.crypto.Attestation;
-import liveness.crypto.EcdsaSignerStub;
+import liveness.crypto.Signer;
 import liveness.device.DeviceAdapter;
 import liveness.device.DeviceException;
 import liveness.engine.MiniFasNetScorer;
@@ -38,7 +38,7 @@ public final class LivenessService {
     private final SameFaceChecker sameFaceChecker;
     private final ChallengeGenerator challengeGen;
     private final RetryRateLimiter retryLimiter;
-    private final EcdsaSignerStub signer;
+    private final Signer signer;
     private volatile liveness.android.FaceEmbedder faceEmbedder; // optional; required for a real same-face check
 
     /** Plugs the face embedder (e.g. SFace/ArcFace). Without one, same-face fails closed outside test stubs. */
@@ -49,7 +49,7 @@ public final class LivenessService {
                            SameFaceChecker sameFaceChecker,
                            ChallengeGenerator challengeGen,
                            RetryRateLimiter retryLimiter,
-                           EcdsaSignerStub signer) {
+                           Signer signer) {
         this.config = Objects.requireNonNull(config, "config");
         this.padScorer = Objects.requireNonNull(padScorer, "padScorer");
         this.sameFaceChecker = Objects.requireNonNull(sameFaceChecker, "sameFaceChecker");
@@ -70,12 +70,21 @@ public final class LivenessService {
      * @param callback      UI callback (nullable; dispatches events to UI thread)
      * @return the liveness result
      */
-    public LivenessResult performLiveness(String subjectId,
-                                          DeviceAdapter device,
-                                          String machineUserId,
-                                          WorkflowType workflow,
-                                          LivenessCallback callback) {
-        // Build per-session components
+    public LivenessSession startSession(String subjectId,
+                                        DeviceAdapter device,
+                                        String machineUserId,
+                                        WorkflowType workflow) {
+        if (!liveness.policy.StubPolicy.stubsAllowed()) {
+            if (faceEmbedder == null || faceEmbedder.getClass().getSimpleName().contains("GridEmbedder")
+                    || faceEmbedder.getClass().getSimpleName().contains("ReferenceFaceEmbedder")) {
+                throw new IllegalStateException("LivenessService refusing to start outside dev without a production FaceEmbedder (e.g. SFaceEmbedder)");
+            }
+        }
+
+        if (retryLimiter.isLocked(machineUserId)) {
+            throw new IllegalStateException("LOCKED: machine+user rate limit exceeded for " + machineUserId);
+        }
+
         CaptureIntegrityChecker captureIntegrity = buildCaptureIntegrity(device);
         SupervisorAuth supervisor = (workflow == WorkflowType.SUPERVISOR_AUTH)
                 ? new SupervisorAuth(subjectId) : null;
@@ -86,6 +95,15 @@ public final class LivenessService {
                 signer, supervisor, machineUserId);
         session.setCaptureMode(device.captureMode());
         session.setFaceEmbedder(faceEmbedder);
+        return session;
+    }
+
+    public LivenessResult performLiveness(String subjectId,
+                                          DeviceAdapter device,
+                                          String machineUserId,
+                                          WorkflowType workflow,
+                                          LivenessCallback callback) {
+        LivenessSession session = startSession(subjectId, device, machineUserId, workflow);
 
         // --- Drive the state machine ---
         // 1. Start
@@ -273,6 +291,8 @@ public final class LivenessService {
         public int retryCount()            { return retryCount; }
         public String failureReason()      { return failureReason; }
         public liveness.audit.AuditSeal.SignedHead auditHead() { return auditHead; }
+        public String auditHeadHash() { return auditHead != null ? auditHead.headHash() : null; }
+        public int auditEntryCount()  { return auditHead != null ? auditHead.size() : 0; }
 
         /** True only if verdict is PASS and attestation is present. */
         public boolean isSuccess() {

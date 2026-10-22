@@ -12,7 +12,7 @@ import java.security.Signature;
  * Generates an ephemeral key pair at construction.
  * M2 replaces this with a key-store-backed signer.
  */
-public final class EcdsaSignerStub {
+public final class EcdsaSignerStub implements Signer {
 
     private static final String ALGORITHM = "SHA256withECDSA";
     private static final String KEY_ALGORITHM = "EC";

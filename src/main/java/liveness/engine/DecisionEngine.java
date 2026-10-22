@@ -26,18 +26,22 @@ public final class DecisionEngine {
     }
 
     /**
+     * Evaluates composite PAD score directly via band routing.
+     * Pipeline architecture: single-model PAD + challenge-response + integrity.
+     */
+    public DecisionResult evaluate(int compositeScore) {
+        return evaluate(compositeScore, false, false, false);
+    }
+
+    /**
      * Evaluates a composite score through hard gates and band routing.
-     * <p>
-     * Hard gate order (§5.3):
-     * 1. captureIntegrityFail → DEVICE_ERROR (handled by caller)
-     * 2. qualityBelowMinimum → QUALITY_FAILURE (→ POSITIONING)
-     * 3. hardPadFlag → CLEAR_ATTACK (immediate, bypasses persistence)
-     * 4. Score-based routing via policy
+     * Note: In the production single-model PAD pipeline, IAD and quality gate checks are run as
+     * separate stages before PAD scoring; hard-gate arguments are kept for compatibility.
      *
      * @param compositeScore        quality-weighted PAD composite (0-100)
-     * @param captureIntegrityFail  true if IAD check failed
-     * @param qualityBelowMinimum   true if quality gate failed
-     * @param hardPadFlag           true if a hard PAD indicator fired (e.g. screen bezel)
+     * @param captureIntegrityFail  true if IAD check failed (handled in pipeline before scoring)
+     * @param qualityBelowMinimum   true if quality gate failed (handled in pipeline before scoring)
+     * @param hardPadFlag           true if an immediate hard PAD flag was raised
      * @return decision result with band, score, and reason
      */
     public DecisionResult evaluate(int compositeScore,

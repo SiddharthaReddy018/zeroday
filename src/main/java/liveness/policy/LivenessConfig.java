@@ -178,10 +178,21 @@ public final class LivenessConfig {
          * @throws IllegalArgumentException if attackThreshold >= passThreshold (§5.1)
          */
         public LivenessConfig build() {
+            if (attackThreshold < 0 || attackThreshold > 100) {
+                throw new IllegalArgumentException("attackThreshold must be within [0, 100], got: " + attackThreshold);
+            }
+            if (passThreshold < 0 || passThreshold > 100) {
+                throw new IllegalArgumentException("passThreshold must be within [0, 100], got: " + passThreshold);
+            }
             if (attackThreshold >= passThreshold) {
                 throw new IllegalArgumentException(
                         "attackThreshold (" + attackThreshold
                                 + ") must be < passThreshold (" + passThreshold + ")");
+            }
+            if (passThreshold - attackThreshold < 10) {
+                throw new IllegalArgumentException(
+                        "passThreshold (" + passThreshold + ") must exceed attackThreshold ("
+                                + attackThreshold + ") by at least minimum gap of 10");
             }
             if (attackPersistenceWindows < 1) {
                 throw new IllegalArgumentException("attackPersistenceWindows must be >= 1");

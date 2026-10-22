@@ -105,6 +105,64 @@ public final class AuditChain {
         return hashes.isEmpty() ? GENESIS : hashes.get(hashes.size() - 1);
     }
 
+    /** True if the chain has been sealed. */
+    public boolean isSealed() {
+        return sealedSize >= 0;
+    }
+
+    /** Size when sealed, or -1 if unsealed. */
+    public int sealedSize() {
+        return sealedSize;
+    }
+
+    /**
+     * Exports the sealed audit trail as a formatted string.
+     *
+     * @throws IllegalStateException if the chain has not been sealed
+     */
+    public String exportTrail() {
+        if (sealedSize < 0) {
+            throw new IllegalStateException("Audit chain must be sealed before export");
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("AUDIT_TRAIL_V1\n");
+        sb.append("SEALED_SIZE:").append(sealedSize).append("\n");
+        sb.append("HEAD_HASH:").append(latestHash()).append("\n");
+        for (int i = 0; i < entries.size(); i++) {
+            sb.append(i).append(":").append(hashes.get(i)).append(":").append(entries.get(i).canonical()).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Reconstructs an AuditChain from an exported trail string and seals it.
+     */
+    public static AuditChain importTrail(String exported) {
+        if (exported == null || exported.isEmpty()) {
+            throw new IllegalArgumentException("Exported trail cannot be null or empty");
+        }
+        AuditChain chain = new AuditChain();
+        String[] lines = exported.split("\\r?\\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("AUDIT_TRAIL_V1")
+                    || line.startsWith("SEALED_SIZE:") || line.startsWith("HEAD_HASH:")) {
+                continue;
+            }
+            int firstColon = line.indexOf(':');
+            int secondColon = line.indexOf(':', firstColon + 1);
+            if (firstColon >= 0 && secondColon > firstColon) {
+                String canonical = line.substring(secondColon + 1);
+                String[] parts = canonical.split("\\|", 4);
+                if (parts.length == 4) {
+                    chain.append(new AuditEvent(Long.parseLong(parts[0]), parts[1], parts[2], parts[3]));
+                }
+            }
+        }
+        chain.seal();
+        return chain;
+    }
+
     // --- Package-private for testing: allows tampering to prove verify() catches it ---
 
     /**

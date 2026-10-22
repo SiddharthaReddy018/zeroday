@@ -40,9 +40,9 @@ class StubPolicyTest {
 
     @Test
     void stubbedSameFaceIsRefusedWhenStubsNotAllowed() {
+        SameFaceChecker sf = new SameFaceChecker(0.6);
+        sf.setStubResult(true);
         withStubsForbidden(() -> {
-            SameFaceChecker sf = new SameFaceChecker(0.6);
-            sf.setStubResult(true);
             MiniFasNetScorer pad = new MiniFasNetScorer(null);
             assertThrows(IllegalStateException.class, () -> run(pad, sf));
         });
@@ -51,5 +51,30 @@ class StubPolicyTest {
     @Test
     void stubsAreAllowedUnderTheTestProperty() {
         assertTrue(StubPolicy.stubsAllowed(), "surefire config must set liveness.allowStubs=true");
+    }
+
+    @Test
+    void setStubScoreIsRefusedWhenStubsForbidden() {
+        MiniFasNetScorer pad = new MiniFasNetScorer(null);
+        withStubsForbidden(() -> {
+            assertThrows(IllegalStateException.class, () -> pad.setStubScore(90));
+        });
+    }
+
+    @Test
+    void setStubResultIsRefusedWhenStubsForbidden() {
+        SameFaceChecker sf = new SameFaceChecker(0.6);
+        withStubsForbidden(() -> {
+            assertThrows(IllegalStateException.class, () -> sf.setStubResult(true));
+        });
+    }
+
+    @Test
+    void crossStreamBinderWithStubbedSameFaceIsRefusedWhenStubsForbidden() {
+        SameFaceChecker sf = new SameFaceChecker(0.6);
+        sf.setStubResult(true);
+        withStubsForbidden(() -> {
+            assertThrows(IllegalStateException.class, () -> new liveness.android.CrossStreamBinder(sf, (pix, w, h) -> new float[128], 5000));
+        });
     }
 }

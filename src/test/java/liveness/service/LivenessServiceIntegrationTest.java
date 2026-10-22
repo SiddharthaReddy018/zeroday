@@ -97,6 +97,23 @@ class LivenessServiceIntegrationTest {
                 result.attestation().signature()));
     }
 
+    @Test
+    void passiveOnlyConfigWithUncertainScoreDoesNotProduceSuccess() {
+        padScorer.setStubScore(50); // UNCERTAIN band (between attackThreshold 30 and passThreshold 70)
+        MockDeviceAdapter device = new MockDeviceAdapter(MockDeviceAdapter.Scenario.BONA_FIDE);
+        RetryRateLimiter limiter = new RetryRateLimiter(3);
+
+        LivenessService service = new LivenessService(
+                config, padScorer, sameFaceChecker, challengeGen, limiter, signer);
+
+        LivenessService.LivenessResult result = service.performLiveness(
+                "subject-1", device, "machine-user-1",
+                LivenessService.WorkflowType.RESIDENT_REGISTRATION, null);
+
+        assertFalse(result.isSuccess(), "Passive-only config must never pass UNCERTAIN band");
+        assertNotEquals(Verdict.PASS, result.verdict());
+    }
+
     // ─── Attack scenarios: print/screen/video → not SUCCESS ───
 
     @Test
@@ -383,5 +400,32 @@ class LivenessServiceIntegrationTest {
 
         // Corrupt frames throw DeviceException → device disconnect path
         assertNotEquals(Verdict.PASS, result.verdict());
+    }
+
+    // ─── Pixel data verification (S19) ───
+
+    @Test
+    void framePixelsAreRealAndPixelDependentNotDummyBytes() throws Exception {
+        MockDeviceAdapter device = new MockDeviceAdapter(MockDeviceAdapter.Scenario.BONA_FIDE);
+        device.open();
+        liveness.core.FaceFrame frame1 = device.captureFrame();
+        liveness.core.FaceFrame frame2 = device.captureFrame();
+
+        assertNotNull(frame1.pixelData());
+        assertTrue(frame1.hasPixelData());
+        assertNotEquals(8, frame1.pixelData().length, "Must not be 8 dummy bytes (S19)");
+        assertEquals(frame1.widthPx() * frame1.heightPx() * 3, frame1.pixelData().length,
+                "Must be full RGB buffer matching width*height*3");
+
+        // Pixels must be dependent on frame content and sequence
+        assertFalse(java.util.Arrays.equals(frame1.pixelData(), frame2.pixelData()),
+                "Different frames in stream must have varying pixel-dependent contents");
+
+        // PadPreprocessor must accept the real frame pixels without throwing IllegalArgumentException
+        float[] tensor = liveness.engine.PadPreprocessor.prepare(
+                frame1.pixelData(), frame1.widthPx(), frame1.heightPx(),
+                frame1.faceBboxX(), frame1.faceBboxY(), frame1.faceBboxWidth(), frame1.faceBboxHeight());
+        assertNotNull(tensor);
+        assertEquals(3 * 128 * 128, tensor.length);
     }
 }

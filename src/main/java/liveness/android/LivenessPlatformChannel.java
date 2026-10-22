@@ -226,11 +226,12 @@ public final class LivenessPlatformChannel implements LivenessCallback {
             lastState = state;
             loc = locale;
         }
+        String safeState = sanitizeState(state);
         Map<String, Object> d = new LinkedHashMap<>();
-        if (prev != null) d.put("previousState", prev);
-        d.put("currentState", state);
-        d.put("messageKey", state);
-        d.put("message", UiMessages.get(loc, state));
+        if (prev != null) d.put("previousState", sanitizeState(prev));
+        d.put("currentState", safeState);
+        d.put("messageKey", safeState);
+        d.put("message", UiMessages.get(loc, safeState));
         d.put("rtl", UiMessages.isRtl(loc));
         emit("STATE_CHANGE", d);
     }
@@ -292,8 +293,13 @@ public final class LivenessPlatformChannel implements LivenessCallback {
             lastWasSuccess = r.isSuccess();
         }
         Map<String, Object> d = new LinkedHashMap<>();
-        d.put("verdict", verdictName(r.verdict()));
-        String state = r.failureReason() != null ? r.failureReason() : "SUCCESS";
+        Verdict v = r.verdict();
+        d.put("verdict", verdictName(v));
+        String rawState = r.failureReason() != null ? r.failureReason() : (r.isSuccess() ? "SUCCESS" : "VERIFICATION_FAILED");
+        String state = r.isSuccess() ? "SUCCESS" : sanitizeState(rawState);
+        if (v == Verdict.ATTACK) {
+            state = "VERIFICATION_FAILED";
+        }
         d.put("currentState", state);
         d.put("messageKey", state);
         d.put("message", UiMessages.get(loc, state));
@@ -322,7 +328,13 @@ public final class LivenessPlatformChannel implements LivenessCallback {
 
     @Override
     public void onError(String errorCode, String message) {
-        emitError(errorCode, message);
+        String safeCode = errorCode;
+        String safeMsg = message;
+        if (errorCode != null && isSensitiveError(errorCode)) {
+            safeCode = "VERIFICATION_FAILED";
+            safeMsg = UiMessages.get(locale, "VERIFICATION_FAILED");
+        }
+        emitError(safeCode, safeMsg);
     }
 
     // ===================== helpers =====================
@@ -348,7 +360,24 @@ public final class LivenessPlatformChannel implements LivenessCallback {
     private String currentSessionId() { synchronized (lock) { return sessionId; } }
 
     private static String verdictName(Verdict v) {
+        if (v == Verdict.ATTACK) return "VERIFICATION_FAILED";
         return v == Verdict.DEVICE_FAILURE ? "DEVICE_ERROR" : v.name(); // schema enum uses DEVICE_ERROR
+    }
+
+    private static String sanitizeState(String state) {
+        if (state == null) return "VERIFICATION_FAILED";
+        String u = state.toUpperCase(java.util.Locale.ROOT);
+        if (u.contains("ATTACK") || u.contains("REPLAY") || u.contains("PRINT")
+                || u.contains("MASK") || u.contains("INJECTION")) {
+            return "VERIFICATION_FAILED";
+        }
+        return state;
+    }
+
+    private static boolean isSensitiveError(String s) {
+        String u = s.toUpperCase(java.util.Locale.ROOT);
+        return u.contains("ATTACK") || u.contains("REPLAY") || u.contains("PRINT")
+                || u.contains("MASK") || u.contains("INJECTION");
     }
 
     private static boolean isSupportedLocale(String l) {

@@ -12,7 +12,8 @@
         "CHALLENGE_PROMPT", "CHALLENGE_WAIT",
         "FINAL_CAPTURE", "VERIFYING_FINAL",
         "SUCCESS", "RETRY_AVAILABLE",
-        "BLOCKED_ATTACK", "FAILED_MAX_RETRIES", "DEVICE_ERROR"
+        "BLOCKED_ATTACK", "FAILED_MAX_RETRIES", "DEVICE_ERROR",
+        "VERIFICATION_FAILED"
       ]
     },
     "ChallengeAction": {
@@ -23,11 +24,35 @@
         "LOOK_LEFT", "LOOK_RIGHT",
         "LOOK_UP", "LOOK_DOWN"
       ]
+    },
+    "Attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "imageSha256",
+        "transcriptSha256",
+        "deviceTier",
+        "captureTimestamp",
+        "modelVersion",
+        "padScore",
+        "canonical"
+      ],
+      "properties": {
+        "imageSha256": { "type": "string" },
+        "transcriptSha256": { "type": "string" },
+        "deviceTier": { "type": "string" },
+        "captureTimestamp": { "type": "integer" },
+        "modelVersion": { "type": "string" },
+        "padScore": { "type": "integer" },
+        "canonical": { "type": "string" },
+        "signature": { "type": "string" }
+      }
     }
   },
 
   "type": "object",
-  "required": ["eventType", "timestamp", "sessionId"],
+  "additionalProperties": false,
+  "required": ["eventType", "timestamp", "sessionId", "data"],
   "properties": {
     "eventType": {
       "type": "string",
@@ -52,6 +77,7 @@
     "data": {
       "type": "object",
       "description": "Event-type-specific payload",
+      "additionalProperties": false,
       "properties": {
         "previousState": { "$ref": "#/definitions/LivenessState" },
         "currentState": { "$ref": "#/definitions/LivenessState" },
@@ -84,16 +110,28 @@
           "maximum": 1,
           "description": "0.0 to 1.0 progress through passive scoring"
         },
+        "framesProcessed": { "type": "integer" },
+        "framesNeeded": { "type": "integer" },
 
         "verdict": {
           "type": "string",
-          "enum": ["PASS", "ATTACK", "MAX_RETRIES", "DEVICE_ERROR", "PENDING"]
+          "enum": ["PASS", "VERIFICATION_FAILED", "MAX_RETRIES", "DEVICE_ERROR", "PENDING"]
         },
+        "retryCount": { "type": "integer" },
         "retriesRemaining": { "type": "integer" },
+        "engineSessionId": { "type": "string" },
 
         "messageKey": {
           "type": "string",
           "description": "Localisation key for the user-facing message (§9)"
+        },
+        "message": {
+          "type": "string",
+          "description": "Localized message text for display"
+        },
+        "rtl": {
+          "type": "boolean",
+          "description": "Whether message direction is right-to-left"
         },
 
         "errorCode": {
@@ -102,7 +140,9 @@
         },
 
         "deviceConnected": { "type": "boolean" },
-        "deviceSerial": { "type": "string" }
+        "deviceSerial": { "type": "string" },
+
+        "attestation": { "$ref": "#/definitions/Attestation" }
       }
     }
   },

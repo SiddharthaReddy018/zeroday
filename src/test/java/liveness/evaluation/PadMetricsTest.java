@@ -151,4 +151,23 @@ public class PadMetricsTest {
         assertEquals(50, metrics.bonafideSubjectCount());
         assertTrue(metrics.ruleOf30Satisfied());
     }
+
+    @Test
+    public void deerHasCorrectLabel() {
+        List<ScoredSample> samples = buildSamples();
+        PadMetrics metrics = new PadMetrics(samples, 70);
+        PadMetrics.DetPoint deer = metrics.deer();
+        assertNotNull(deer);
+        assertEquals("D-EER", deer.label());
+    }
+
+    @Test
+    public void emptyDatasetReturnsNaNForRates() {
+        PadMetrics emptyMetrics = new PadMetrics(new ArrayList<>(), 70);
+        assertTrue(Double.isNaN(emptyMetrics.bpcer().rate()));
+        assertTrue(Double.isNaN(emptyMetrics.apcer("print").rate()));
+        assertNull(emptyMetrics.worstSpeciesApcer());
+        assertEquals(0, emptyMetrics.bonafideSubjectCount());
+        assertFalse(emptyMetrics.ruleOf30Satisfied());
+    }
 }

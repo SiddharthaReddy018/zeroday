@@ -34,6 +34,7 @@ public final class UiMessages {
         m.put("SUCCESS", "Good, face captured successfully");
         m.put("RETRY_AVAILABLE", "We could not verify face liveness. Please try again.");
         m.put("BLOCKED_ATTACK", "Face verification could not be completed. Please try again.");
+        m.put("VERIFICATION_FAILED", "Face verification could not be completed. Please try again.");
         m.put("FAILED_MAX_RETRIES", "Verification could not be completed.");
         m.put("DEVICE_ERROR", "Camera not available. Please check the connection and try again.");
 
@@ -86,6 +87,7 @@ public final class UiMessages {
         m.put("SUCCESS", "Bien, le visage a été capturé avec succès");
         m.put("RETRY_AVAILABLE", "Nous n'avons pas pu vérifier la vivacité du visage. Veuillez réessayer.");
         m.put("BLOCKED_ATTACK", "La vérification du visage n'a pas pu être effectuée. Veuillez réessayer.");
+        m.put("VERIFICATION_FAILED", "La vérification du visage n'a pas pu être effectuée. Veuillez réessayer.");
         m.put("FAILED_MAX_RETRIES", "La vérification n'a pas pu être effectuée.");
         m.put("DEVICE_ERROR", "Caméra non disponible. Veuillez vérifier la connexion et réessayer.");
 
@@ -129,6 +131,7 @@ public final class UiMessages {
         m.put("SUCCESS", "\u062C\u064A\u062F\u060C \u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0648\u062C\u0647 \u0628\u0646\u062C\u0627\u062D");
         m.put("RETRY_AVAILABLE", "\u0644\u0645 \u0646\u062A\u0645\u0643\u0646 \u0645\u0646 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u062D\u064A\u0648\u064A\u0629 \u0627\u0644\u0648\u062C\u0647. \u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.");
         m.put("BLOCKED_ATTACK", "\u062A\u0639\u0630\u0631 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u0644\u0648\u062C\u0647. \u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.");
+        m.put("VERIFICATION_FAILED", "\u062A\u0639\u0630\u0631 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u0644\u0648\u062C\u0647. \u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.");
         m.put("FAILED_MAX_RETRIES", "\u062A\u0639\u0630\u0631 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u062A\u062D\u0642\u0642.");
         m.put("DEVICE_ERROR", "\u0627\u0644\u0643\u0627\u0645\u064A\u0631\u0627 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D\u0629. \u064A\u0631\u062C\u0649 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0648\u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.");
 

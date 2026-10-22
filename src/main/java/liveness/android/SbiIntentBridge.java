@@ -34,6 +34,20 @@ public final class SbiIntentBridge {
     public static final String DEFAULT_SPEC_VERSION = "0.9.5";
     private static final Pattern TX_ID = Pattern.compile("[A-Za-z0-9-]{4,50}");
 
+    private static volatile List<String> allowedPackages = null;
+    private static volatile List<String> allowedCertDigests = null;
+
+    public static void setAllowedPackages(List<String> packages) {
+        allowedPackages = packages != null ? java.util.Collections.unmodifiableList(new ArrayList<>(packages)) : null;
+    }
+
+    public static void setAllowedCertDigests(List<String> certDigests) {
+        allowedCertDigests = certDigests != null ? java.util.Collections.unmodifiableList(new ArrayList<>(certDigests)) : null;
+    }
+
+    public static List<String> getAllowedPackages() { return allowedPackages; }
+    public static List<String> getAllowedCertDigests() { return allowedCertDigests; }
+
     private SbiIntentBridge() {}
 
     public static String infoAction(String appId) { return appId + ".Info"; }
@@ -69,7 +83,7 @@ public final class SbiIntentBridge {
         bios.add(bio);
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("env", env == null ? "Developer" : env);
+        body.put("env", env == null ? "Target" : env);
         body.put("purpose", purpose == null ? "Registration" : purpose);
         body.put("specVersion", specVersion != null ? specVersion : (d.specVersion != null ? d.specVersion : DEFAULT_SPEC_VERSION));
         body.put("timeout", timeoutMs);
@@ -86,6 +100,18 @@ public final class SbiIntentBridge {
     public static SbiDevice discover(SbiIntentLauncher launcher, long timeoutMs) throws DeviceException {
         List<String> pkgs = launcher.resolveSbiPackages();
         if (pkgs == null || pkgs.isEmpty()) throw new DeviceException("SBI_NOT_INSTALLED: no app handles " + ACTION_DISCOVER);
+        if (allowedPackages != null && !allowedPackages.isEmpty()) {
+            List<String> filtered = new ArrayList<>();
+            for (String p : pkgs) {
+                if (allowedPackages.contains(p)) {
+                    filtered.add(p);
+                }
+            }
+            if (filtered.isEmpty()) {
+                throw new DeviceException("SBI_PACKAGE_NOT_ALLOWED: none of " + pkgs + " in allowlist " + allowedPackages);
+            }
+            pkgs = filtered;
+        }
         String lastProblem = "no SBI app answered discovery";
         for (String pkg : pkgs) {
             try {
@@ -171,6 +197,17 @@ public final class SbiIntentBridge {
 
     public static SbiCaptureResult capture(SbiIntentLauncher launcher, SbiIntentRequest request,
                                            SbiJwtVerifier verifier, long timeoutMs) throws DeviceException {
+        return capture(launcher, request, verifier, timeoutMs, null, null);
+    }
+
+    public static SbiCaptureResult capture(SbiIntentLauncher launcher, SbiIntentRequest request,
+                                           SbiJwtVerifier verifier, long timeoutMs,
+                                           String expectedEnv, String expectedPurpose) throws DeviceException {
+        if (allowedPackages != null && !allowedPackages.isEmpty() && request.targetPackage() != null) {
+            if (!allowedPackages.contains(request.targetPackage())) {
+                throw new DeviceException("SBI_PACKAGE_NOT_ALLOWED: package " + request.targetPackage() + " not in allowlist " + allowedPackages);
+            }
+        }
         SbiIntentLauncher.ActivityResult r;
         try {
             r = launcher.launch(request, timeoutMs);
@@ -180,11 +217,16 @@ public final class SbiIntentBridge {
         if (r == null || r.resultCode != SbiIntentLauncher.ActivityResult.RESULT_OK) {
             throw new DeviceException("SBI_CANCELLED: resultCode=" + (r == null ? "null" : String.valueOf(r.resultCode)));
         }
-        return parseCaptureResponse(r.response, verifier);
+        return parseCaptureResponse(r.response, verifier, expectedEnv, expectedPurpose);
+    }
+
+    public static SbiCaptureResult parseCaptureResponse(byte[] response, SbiJwtVerifier verifier) throws DeviceException {
+        return parseCaptureResponse(response, verifier, null, null);
     }
 
     @SuppressWarnings("unchecked")
-    public static SbiCaptureResult parseCaptureResponse(byte[] response, SbiJwtVerifier verifier) throws DeviceException {
+    public static SbiCaptureResult parseCaptureResponse(byte[] response, SbiJwtVerifier verifier,
+                                                        String expectedEnv, String expectedPurpose) throws DeviceException {
         if (isEmpty(response)) throw new DeviceException("SBI_BAD_RESPONSE: empty response");
         try {
             Map<String, Object> root = MiniJson.parseObject(new String(response, StandardCharsets.UTF_8));
@@ -201,6 +243,18 @@ public final class SbiIntentBridge {
             String payloadJson = verifier.verify(jwt); // throws VerificationException on any failure
             Map<String, Object> payload = MiniJson.parseObject(payloadJson);
             if (!"Face".equalsIgnoreCase(str(payload.get("bioType")))) throw new DeviceException("SBI_BAD_RESPONSE: bioType is not Face");
+
+            if (expectedEnv != null && payload.get("env") != null) {
+                if (!expectedEnv.equalsIgnoreCase(str(payload.get("env")))) {
+                    throw new DeviceException("SBI_WRONG_ENV: expected " + expectedEnv + " but got " + payload.get("env"));
+                }
+            }
+            if (expectedPurpose != null && payload.get("purpose") != null) {
+                if (!expectedPurpose.equalsIgnoreCase(str(payload.get("purpose")))) {
+                    throw new DeviceException("SBI_WRONG_PURPOSE: expected " + expectedPurpose + " but got " + payload.get("purpose"));
+                }
+            }
+
             String bioValue = str(payload.get("bioValue"));
             String txId = str(payload.get("transactionId"));
             String ts = str(payload.get("timestamp"));

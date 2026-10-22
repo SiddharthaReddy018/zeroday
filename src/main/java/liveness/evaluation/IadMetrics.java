@@ -43,6 +43,34 @@ public final class IadMetrics {
         if (falseAlarm) legitimateFalseAlarms++;
     }
 
+    /** Operating point descriptor. */
+    public String operatingPoint() {
+        return "CEN_TS_18099_BASELINE";
+    }
+
+    /**
+     * Executes a synthetic mechanism runner simulating IAD trials.
+     * Useful for automated test environments where physical hardware injection is not present.
+     */
+    public void runSyntheticEvaluation(int freezeTrials, double freezeDetectionProb,
+                                       int loopTrials, double loopDetectionProb,
+                                       int nonceTrials, double nonceRejectionProb,
+                                       int legitTrials, double falseAlarmProb,
+                                       java.util.Random rng) {
+        for (int i = 0; i < freezeTrials; i++) {
+            recordFreezeAttempt(rng.nextDouble() < freezeDetectionProb);
+        }
+        for (int i = 0; i < loopTrials; i++) {
+            recordLoopAttempt(rng.nextDouble() < loopDetectionProb);
+        }
+        for (int i = 0; i < nonceTrials; i++) {
+            recordNonceSwapAttempt(rng.nextDouble() < nonceRejectionProb);
+        }
+        for (int i = 0; i < legitTrials; i++) {
+            recordLegitimateSession(rng.nextDouble() < falseAlarmProb);
+        }
+    }
+
     // ── Rates ──────────────────────────────────────────────────────────
 
     /** Freeze detection rate: detected / total freeze attempts. */

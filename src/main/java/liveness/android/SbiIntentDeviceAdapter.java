@@ -94,18 +94,21 @@ public final class SbiIntentDeviceAdapter implements DeviceAdapter {
         lastReturnedTxId = null;
 
         SbiIntentRequest req = SbiIntentBridge.buildCaptureRequest(device, wireId, env, purpose, null, 40, timeoutMs, Instant.now());
-        SbiCaptureResult res = SbiIntentBridge.capture(launcher, req, verifier, timeoutMs + 2000L);
+        SbiCaptureResult res = SbiIntentBridge.capture(launcher, req, verifier, timeoutMs + 2000L, env, purpose);
 
         // Translate: an exact echo of the wire id proves the nonce-bound request was answered.
         String effectiveReturned = wireId.equals(res.transactionId()) ? boundTransactionId : res.transactionId();
 
-        Binding.check(binder, nonce, effectiveReturned, res, hostFrameSupplier.get(), decoder);
+        RgbDecoder.Decoded decoded = Binding.check(binder, nonce, effectiveReturned, res, hostFrameSupplier.get(), decoder);
 
         lastReturnedTxId = effectiveReturned;
         String cert = "sbi:" + (res.deviceCode() == null ? device.appId : res.deviceCode());
+        int w = decoded != null ? decoded.width : 0;
+        int h = decoded != null ? decoded.height : 0;
+        byte[] rgb = decoded != null ? decoded.rgb : null;
         return new FaceFrame(FrameQuality.GOOD, cert, cert.hashCode(),
-                res.timestampMs(), 0, 0, 0, res.image(),
-                0, 0, 0, 0, 0.0, 0.0, 0.0, 1, 0.0, 0.0, null);
+                res.timestampMs(), 0, w, h, rgb,
+                0, 0, w, h, 0.0, 0.0, 0.0, 1, 0.0, 0.0, null, 0L, res.image());
     }
 
     @Override
@@ -127,8 +130,8 @@ public final class SbiIntentDeviceAdapter implements DeviceAdapter {
     static final class Binding {
         private Binding() {}
 
-        static void check(CrossStreamBinder binder, String nonce, String returnedTxId, SbiCaptureResult res,
-                          FaceFrame host, RgbDecoder decoder) throws DeviceException {
+        static RgbDecoder.Decoded check(CrossStreamBinder binder, String nonce, String returnedTxId, SbiCaptureResult res,
+                                        FaceFrame host, RgbDecoder decoder) throws DeviceException {
             RgbDecoder.Decoded d = null;
             try {
                 d = decoder.decode(res.image());
@@ -139,6 +142,7 @@ public final class SbiIntentDeviceAdapter implements DeviceAdapter {
                     nonce, returnedTxId, host, res.timestampMs(),
                     d == null ? null : d.rgb, d == null ? 0 : d.width, d == null ? 0 : d.height);
             if (r != CrossStreamBinder.Result.OK) throw new DeviceException("BINDING_FAILURE: " + r.name());
+            return d;
         }
     }
 }

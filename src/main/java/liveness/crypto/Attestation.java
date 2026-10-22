@@ -29,14 +29,24 @@ public final class Attestation {
     private final String mode;
     private final PadResult pad;
     private final long createdAtEpochMs;
+    private final int auditEntryCount;
     private byte[] signature;
     private String signerPublicKeyB64;
 
-    public Attestation(String subjectId, String sessionId,
-                       String imageSha256, String transcriptSha256,
-                       String deviceTier, long captureTimestamp,
-                       String modelVersion, int configVersion,
-                       String mode, PadResult pad) {
+    Attestation(String subjectId, String sessionId,
+                String imageSha256, String transcriptSha256,
+                String deviceTier, long captureTimestamp,
+                String modelVersion, int configVersion,
+                String mode, PadResult pad) {
+        this(subjectId, sessionId, imageSha256, transcriptSha256,
+                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, -1);
+    }
+
+    Attestation(String subjectId, String sessionId,
+                String imageSha256, String transcriptSha256,
+                String deviceTier, long captureTimestamp,
+                String modelVersion, int configVersion,
+                String mode, PadResult pad, int auditEntryCount) {
         this.subjectId = Objects.requireNonNull(subjectId, "subjectId");
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.verdict = "PASS";
@@ -50,6 +60,35 @@ public final class Attestation {
         this.mode = Objects.requireNonNull(mode, "mode");
         this.pad = Objects.requireNonNull(pad, "pad");
         this.createdAtEpochMs = System.currentTimeMillis();
+        this.auditEntryCount = auditEntryCount;
+    }
+
+    /**
+     * Factory reachable only from the session success commit path (§6.5, S10).
+     */
+    public static Attestation createFromSuccessSession(
+            String subjectId, String sessionId,
+            String imageSha256, String transcriptSha256,
+            String deviceTier, long captureTimestamp,
+            String modelVersion, int configVersion,
+            String mode, PadResult pad, Signer signer) {
+        return createFromSuccessSession(subjectId, sessionId, imageSha256, transcriptSha256,
+                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, -1, signer);
+    }
+
+    public static Attestation createFromSuccessSession(
+            String subjectId, String sessionId,
+            String imageSha256, String transcriptSha256,
+            String deviceTier, long captureTimestamp,
+            String modelVersion, int configVersion,
+            String mode, PadResult pad, int auditEntryCount, Signer signer) {
+        Attestation a = new Attestation(
+                subjectId, sessionId, imageSha256, transcriptSha256,
+                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, auditEntryCount);
+        if (signer != null) {
+            a.sign(signer);
+        }
+        return a;
     }
 
     /**
@@ -58,7 +97,11 @@ public final class Attestation {
     public String canonical() {
         StringBuilder sb = new StringBuilder();
         field(sb, subjectId); field(sb, sessionId); field(sb, verdict); field(sb, imageSha256);
-        field(sb, transcriptSha256); field(sb, deviceTier); field(sb, String.valueOf(captureTimestamp));
+        field(sb, transcriptSha256);
+        if (auditEntryCount >= 0) {
+            field(sb, String.valueOf(auditEntryCount));
+        }
+        field(sb, deviceTier); field(sb, String.valueOf(captureTimestamp));
         field(sb, String.valueOf(createdAtEpochMs));
         // Fields added so that model, config, mode and the PAD result are tamper-evident too.
         field(sb, modelVersion); field(sb, String.valueOf(configVersion)); field(sb, mode);
@@ -85,21 +128,22 @@ public final class Attestation {
     public String signerPublicKeyB64() { return signerPublicKeyB64; }
 
     /**
-     * Signs this attestation.
+     * Signs this attestation using a Signer.
      *
      * @return this attestation (for chaining)
      */
-    public Attestation sign(EcdsaSignerStub signer) {
+    public Attestation sign(Signer signer) {
+        Objects.requireNonNull(signer, "signer");
         this.signerPublicKeyB64 = java.util.Base64.getEncoder().encodeToString(signer.publicKey().getEncoded());
         this.signature = signer.sign(canonical());
         return this;
     }
 
     /**
-     * Verifies the signature.
+     * Verifies the signature using a Signer.
      */
-    public boolean verify(EcdsaSignerStub signer) {
-        if (signature == null) {
+    public boolean verify(Signer signer) {
+        if (signature == null || signer == null) {
             return false;
         }
         return signer.verify(canonical(), signature);
@@ -111,6 +155,8 @@ public final class Attestation {
     public String verdict()          { return verdict; }
     public String imageSha256()      { return imageSha256; }
     public String transcriptSha256() { return transcriptSha256; }
+    public String auditHeadHash()    { return transcriptSha256; }
+    public int auditEntryCount()     { return auditEntryCount; }
     public String deviceTier()       { return deviceTier; }
     public long captureTimestamp()    { return captureTimestamp; }
     public String modelVersion()     { return modelVersion; }

@@ -41,4 +41,48 @@ class AuditSealTest {
         AuditSeal.SignedHead h = AuditSeal.sign(c, "sess", new EcdsaSignerStub());
         assertFalse(AuditSeal.verify(h, c, new EcdsaSignerStub()));
     }
+
+    @Test
+    void unsealedChainCannotBeExported() {
+        AuditChain c = chain(3);
+        assertThrows(IllegalStateException.class, c::exportTrail);
+    }
+
+    @Test
+    void exportAndImportSealedTrailVerifiesAgainstSignedHead() {
+        EcdsaSignerStub s = new EcdsaSignerStub();
+        AuditChain c = chain(5);
+        c.seal();
+        AuditSeal.SignedHead h = AuditSeal.sign(c, "sess-export", s);
+
+        String exported = c.exportTrail();
+        assertTrue(exported.contains("AUDIT_TRAIL_V1"));
+        assertTrue(exported.contains("SEALED_SIZE:5"));
+        assertTrue(exported.contains(h.headHash()));
+
+        AuditChain imported = AuditChain.importTrail(exported);
+        assertTrue(imported.verifySealed());
+        assertTrue(AuditSeal.verify(h, imported, s));
+    }
+
+    @Test
+    void truncatedExportedTrailFailsSignedHeadVerification() {
+        EcdsaSignerStub s = new EcdsaSignerStub();
+        AuditChain c = chain(5);
+        c.seal();
+        AuditSeal.SignedHead h = AuditSeal.sign(c, "sess-trunc", s);
+
+        String exported = c.exportTrail();
+        // Drop the last entry line
+        String[] lines = exported.split("\n");
+        StringBuilder truncated = new StringBuilder();
+        for (int i = 0; i < lines.length - 1; i++) {
+            truncated.append(lines[i]).append("\n");
+        }
+
+        AuditChain importedTruncated = AuditChain.importTrail(truncated.toString());
+        // Truncated log has only 4 entries instead of 5, and its latestHash differs
+        assertFalse(AuditSeal.verify(h, importedTruncated, s),
+                "Truncated audit trail must fail SignedHead verification");
+    }
 }

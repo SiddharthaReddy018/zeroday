@@ -42,6 +42,12 @@ public interface DeviceAdapter {
      */
     default String captureMode() { return "STREAM"; }
 
+    /**
+     * Device security tier recorded in the attestation (§6.5, S10).
+     * Defaults to "T1" (MDS streaming or CameraX); SBI secure hardware adapters report "T2".
+     */
+    default String deviceTier() { return "T1"; }
+
     /** Closes/disconnects the device. Idempotent. */
     void close();
 

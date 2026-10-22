@@ -2,8 +2,8 @@ package liveness.evaluation;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -14,7 +14,8 @@ import java.util.Set;
  * Bias Index = Σ_c (metric_max_c − metric_min_c) over categories.
  * Categories: Monk Skin Tone, lighting, glasses, age group, gender.
  * <p>
- * A cell with fewer than 30 bona fide subjects is labelled "exploratory" (R7).
+ * A cell with fewer than 30 bona fide subjects is labelled "exploratory" (R7)
+ * and excluded from the conclusive Bias Index to prevent noisy estimates.
  * Reports rates/differences with CIs, not ANOVA p-values.
  * Age bins: 0-20, 20-30, 30-40, 40-50, 50+ (comparable with U26).
  */
@@ -40,6 +41,7 @@ public final class FairnessAnalyzer {
      * Bias Index (DFIC paper, Gonçalves et al.):
      * Σ_c (metric_max_c − metric_min_c) over demographic categories.
      * Lower is more fair.
+     * Exploratory groups (<30 subjects) are excluded from the delta per Rule of 30.
      *
      * @return the aggregate Bias Index over all available categories
      */
@@ -54,15 +56,22 @@ public final class FairnessAnalyzer {
     }
 
     /**
-     * Per-category bias: max − min BPCER across groups within a category.
+     * Per-category bias: max − min BPCER across conclusive groups within a category.
+     * Per Rule of 30 (R7), groups with <30 subjects are excluded from the delta.
      */
     private double categoryBias(Map<String, GroupResult> groups) {
-        if (groups.size() < 2) return 0.0;
-        double max = Double.MIN_VALUE;
-        double min = Double.MAX_VALUE;
+        List<GroupResult> conclusive = new ArrayList<>();
         for (GroupResult g : groups.values()) {
-            if (g.bpcer > max) max = g.bpcer;
-            if (g.bpcer < min) min = g.bpcer;
+            if (!g.exploratory() && !Double.isNaN(g.bpcer())) {
+                conclusive.add(g);
+            }
+        }
+        if (conclusive.size() < 2) return 0.0;
+        double max = -Double.MAX_VALUE;
+        double min = Double.MAX_VALUE;
+        for (GroupResult g : conclusive) {
+            if (g.bpcer() > max) max = g.bpcer();
+            if (g.bpcer() < min) min = g.bpcer();
         }
         return max - min;
     }
@@ -100,8 +109,8 @@ public final class FairnessAnalyzer {
     }
 
     private Map<String, GroupResult> groupBpcer(GroupExtractor extractor) {
-        // Group bona fide samples by the demographic attribute
-        Map<String, List<ScoredSample>> groups = new HashMap<>();
+        // Group bona fide samples by the demographic attribute using LinkedHashMap for deterministic ordering
+        Map<String, List<ScoredSample>> groups = new LinkedHashMap<>();
         for (ScoredSample s : samples) {
             if (!s.isBonafide()) continue;
             String key = extractor.extract(s);
@@ -112,7 +121,7 @@ public final class FairnessAnalyzer {
             groups.get(key).add(s);
         }
 
-        Map<String, GroupResult> results = new HashMap<>();
+        Map<String, GroupResult> results = new LinkedHashMap<>();
         for (Map.Entry<String, List<ScoredSample>> entry : groups.entrySet()) {
             List<ScoredSample> group = entry.getValue();
             int total = group.size();
@@ -124,9 +133,10 @@ public final class FairnessAnalyzer {
                     misclassified++;
                 }
             }
-            double bpcer = (double) misclassified / total;
-            WilsonConfidenceInterval.Interval ci =
-                    WilsonConfidenceInterval.compute(misclassified, total);
+            double bpcer = total == 0 ? Double.NaN : (double) misclassified / total;
+            WilsonConfidenceInterval.Interval ci = total == 0
+                    ? new WilsonConfidenceInterval.Interval(Double.NaN, Double.NaN, Double.NaN)
+                    : WilsonConfidenceInterval.compute(misclassified, total);
             boolean exploratory = subjects.size() < MIN_SUBJECTS_PER_CELL;
             results.put(entry.getKey(),
                     new GroupResult(entry.getKey(), bpcer, total, subjects.size(), ci, exploratory));
@@ -141,6 +151,7 @@ public final class FairnessAnalyzer {
      */
     public List<String> flaggedGroups() {
         double overallBpcer = overallBpcer();
+        if (Double.isNaN(overallBpcer)) return Collections.emptyList();
         List<String> flagged = new ArrayList<>();
         addFlags(flagged, groupBpcerBySkinTone(), overallBpcer, "skin_tone");
         addFlags(flagged, groupBpcerByGender(), overallBpcer, "gender");
@@ -153,6 +164,7 @@ public final class FairnessAnalyzer {
     private void addFlags(List<String> flagged, Map<String, GroupResult> groups,
                           double overallBpcer, String category) {
         for (GroupResult g : groups.values()) {
+            if (Double.isNaN(g.bpcer())) continue;
             double swingPp = Math.abs(g.bpcer - overallBpcer) * 100.0;
             if (swingPp > SWING_THRESHOLD_PP) {
                 flagged.add(category + "=" + g.group
@@ -172,7 +184,7 @@ public final class FairnessAnalyzer {
                 if (s.score() < threshold) misclassified++;
             }
         }
-        return bonafide == 0 ? 0.0 : (double) misclassified / bonafide;
+        return bonafide == 0 ? Double.NaN : (double) misclassified / bonafide;
     }
 
     // ── Report ─────────────────────────────────────────────────────────

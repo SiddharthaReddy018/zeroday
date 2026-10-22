@@ -34,6 +34,7 @@ public final class SameFaceChecker {
 
     /** TEST/DEMO ONLY: guarded at runtime by {@link liveness.policy.StubPolicy}. */
     public void setStubResult(boolean result) {
+        liveness.policy.StubPolicy.check(true, "SameFaceChecker.setStubResult");
         this.stubResult = result;
     }
 }

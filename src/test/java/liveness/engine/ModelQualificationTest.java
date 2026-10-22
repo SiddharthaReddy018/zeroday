@@ -6,6 +6,7 @@ import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.TensorInfo;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,10 +25,7 @@ public class ModelQualificationTest {
     @Test
     public void qualifyFp32Model() throws Exception {
         Path modelPath = Paths.get("datasets/models/MiniFASNetV2-SE.onnx");
-        if (!Files.exists(modelPath)) {
-            // Skip if model not yet downloaded
-            return;
-        }
+        assumeTrue(Files.exists(modelPath), "model missing: " + modelPath);
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment();
              OrtSession session = env.createSession(modelPath.toString(), new OrtSession.SessionOptions())) {
@@ -64,9 +62,7 @@ public class ModelQualificationTest {
     @Test
     public void qualifyInt8QuantizedModel() throws Exception {
         Path modelPath = Paths.get("datasets/models/MiniFASNetV2-SE-int8.onnx");
-        if (!Files.exists(modelPath)) {
-            return;
-        }
+        assumeTrue(Files.exists(modelPath), "model missing: " + modelPath);
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment();
              OrtSession session = env.createSession(modelPath.toString(), new OrtSession.SessionOptions())) {
@@ -84,6 +80,7 @@ public class ModelQualificationTest {
     public void modelFileBudgetCompliant() {
         Path fp32 = Paths.get("datasets/models/MiniFASNetV2-SE.onnx");
         Path int8 = Paths.get("datasets/models/MiniFASNetV2-SE-int8.onnx");
+        assumeTrue(Files.exists(fp32) || Files.exists(int8), "model files missing");
 
         if (Files.exists(fp32)) {
             long bytes = fp32.toFile().length();
@@ -101,9 +98,7 @@ public class ModelQualificationTest {
     @Test
     public void qualifyScoreDirectionAndClassOrder() throws Exception {
         Path modelPath = Paths.get("datasets/models/MiniFASNetV2-SE.onnx");
-        if (!Files.exists(modelPath)) {
-            return;
-        }
+        assumeTrue(Files.exists(modelPath), "model missing: " + modelPath);
 
         try (MiniFasNetScorer scorer = new MiniFasNetScorer(modelPath)) {
             // Check that uniform black tensor produces a low/spoof score (not high live)

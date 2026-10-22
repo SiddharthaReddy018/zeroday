@@ -40,6 +40,10 @@ public final class MiniFasNetScorer implements AutoCloseable {
      * </ul>
      */
     public MiniFasNetScorer(Path modelPath) {
+        this(modelPath, null);
+    }
+
+    public MiniFasNetScorer(Path modelPath, String expectedSha256) {
         if (modelPath == null) {
             this.isStubMode = true;
             return;
@@ -48,6 +52,13 @@ public final class MiniFasNetScorer implements AutoCloseable {
             throw new IllegalStateException("PAD model file not found: " + modelPath);
         }
         try {
+            this.modelSha = liveness.util.Sha256.hex(liveness.util.Sha256.digest(Files.readAllBytes(modelPath)));
+            if (expectedSha256 != null && !expectedSha256.trim().isEmpty()) {
+                if (!this.modelSha.equalsIgnoreCase(expectedSha256.trim())) {
+                    throw new SecurityException("PAD model SHA-256 mismatch: expected "
+                            + expectedSha256 + " but computed " + this.modelSha);
+                }
+            }
             this.env = OrtEnvironment.getEnvironment();
             OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
             opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
@@ -60,14 +71,21 @@ public final class MiniFasNetScorer implements AutoCloseable {
                 throw new IllegalStateException("Unsupported PAD input shape " + java.util.Arrays.toString(shp)
                         + "; expected [N,3,128,128]. Update PadPreprocessor with the model.");
             }
-            this.modelSha = liveness.util.Sha256.hex(liveness.util.Sha256.digest(Files.readAllBytes(modelPath)));
+        } catch (SecurityException e) {
+            throw e;
         } catch (OrtException | java.io.IOException | RuntimeException | LinkageError e) {   // LinkageError: native ORT lib missing
             throw new IllegalStateException("PAD model failed to load: " + modelPath, e);
         }
         this.isStubMode = false;
     }
 
+    public MiniFasNetScorer(ModelRegistry registry, String modelName) {
+        this(java.util.Objects.requireNonNull(registry, "registry").getModelPath(modelName),
+                registry.getMetadata(modelName) != null ? registry.getMetadata(modelName).sha256() : null);
+    }
+
     public void setStubScore(int score) {
+        liveness.policy.StubPolicy.check(true, "MiniFasNetScorer.setStubScore");
         this.stubScore = score;
     }
 

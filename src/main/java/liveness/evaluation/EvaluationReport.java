@@ -149,31 +149,38 @@ public final class EvaluationReport {
 
         for (String species : sortedSpecies) {
             PadMetrics.SpeciesResult r = results.get(species);
-            sb.append(String.format("| %s | %.4f | %d | %s |\n",
-                    species, r.rate(), r.count(), r.ci()));
+            String rateStr = Double.isNaN(r.rate()) ? "not measured" : String.format("%.4f", r.rate());
+            sb.append(String.format("| %s | %s | %d | %s |\n",
+                    species, rateStr, r.count(), r.ci()));
         }
 
         // Worst-species headline
         PadMetrics.SpeciesResult worst = padMetrics.worstSpeciesApcer();
         if (worst != null) {
-            sb.append(String.format("\n**Worst-species headline APCER:** %s = %.4f %s\n\n",
-                    worst.species(), worst.rate(), worst.ci()));
+            String worstRateStr = Double.isNaN(worst.rate()) ? "not measured" : String.format("%.4f", worst.rate());
+            sb.append(String.format("\n**Worst-species headline APCER:** %s = %s %s\n\n",
+                    worst.species(), worstRateStr, worst.ci()));
         }
     }
 
     private void appendBpcer(StringBuilder sb) {
         sb.append("## BPCER\n\n");
         PadMetrics.RateResult bpcer = padMetrics.bpcer();
-        sb.append(String.format("**BPCER:** %.4f (N=%d) %s\n\n",
-                bpcer.rate(), bpcer.count(), bpcer.ci()));
+        String rateStr = Double.isNaN(bpcer.rate()) ? "not measured" : String.format("%.4f", bpcer.rate());
+        sb.append(String.format("**BPCER:** %s (N=%d) %s\n\n",
+                rateStr, bpcer.count(), bpcer.ci()));
     }
 
     private void appendDeer(StringBuilder sb) {
         sb.append("## D-EER (Detection Equal Error Rate)\n\n");
         PadMetrics.DetPoint deer = padMetrics.deer();
-        sb.append(String.format("**D-EER:** ~%.4f at threshold %d (APCER=%.4f, BPCER=%.4f)\n\n",
-                (deer.apcer() + deer.bpcer()) / 2.0,
-                deer.threshold(), deer.apcer(), deer.bpcer()));
+        if (Double.isNaN(deer.apcer()) || Double.isNaN(deer.bpcer())) {
+            sb.append(String.format("**D-EER:** not computable (operating point: %s)\n\n", deer.label()));
+        } else {
+            sb.append(String.format("**D-EER:** ~%.4f at threshold %d (APCER=%.4f, BPCER=%.4f, operating point: %s)\n\n",
+                    (deer.apcer() + deer.bpcer()) / 2.0,
+                    deer.threshold(), deer.apcer(), deer.bpcer(), deer.label()));
+        }
     }
 
     private void appendCoverageStatement(StringBuilder sb) {

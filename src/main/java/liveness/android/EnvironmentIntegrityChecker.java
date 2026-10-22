@@ -19,8 +19,50 @@ public final class EnvironmentIntegrityChecker {
         EMULATOR
     }
 
+    public enum Profile {
+        PRODUCTION,
+        DEVELOPMENT
+    }
+
     /** Findings that block a session by default (all of them). */
     public static Set<Finding> defaultBlocking() { return EnumSet.allOf(Finding.class); }
+
+    /** Findings that block in production: all findings, including ADB and test-keys. */
+    public static Set<Finding> prodBlocking() {
+        return EnumSet.allOf(Finding.class);
+    }
+
+    /** Findings that block in development: allows ADB when configured. */
+    public static Set<Finding> devBlocking(boolean allowAdb) {
+        Set<Finding> set = EnumSet.allOf(Finding.class);
+        if (allowAdb) {
+            set.remove(Finding.ADB_ENABLED);
+        }
+        return Collections.unmodifiableSet(set);
+    }
+
+    public static Set<Finding> blockingForProfile(Profile profile) {
+        return blockingForProfile(profile, true);
+    }
+
+    public static Set<Finding> blockingForProfile(Profile profile, boolean allowAdbInDev) {
+        if (profile == Profile.PRODUCTION) {
+            return prodBlocking();
+        }
+        return devBlocking(allowAdbInDev);
+    }
+
+    public static EnvironmentIntegrityChecker forProduction(EnvProbe probe) {
+        return new EnvironmentIntegrityChecker(probe, Profile.PRODUCTION);
+    }
+
+    public static EnvironmentIntegrityChecker forDevelopment(EnvProbe probe) {
+        return forDevelopment(probe, true);
+    }
+
+    public static EnvironmentIntegrityChecker forDevelopment(EnvProbe probe, boolean allowAdb) {
+        return new EnvironmentIntegrityChecker(probe, devBlocking(allowAdb), Profile.DEVELOPMENT);
+    }
 
     public static final class Result {
         private final Set<Finding> findings;
@@ -56,14 +98,28 @@ public final class EnvironmentIntegrityChecker {
 
     private final EnvProbe probe;
     private final Set<Finding> blocking;
+    private final Profile profile;
 
     public EnvironmentIntegrityChecker(EnvProbe probe) {
-        this(probe, defaultBlocking());
+        this(probe, defaultBlocking(), Profile.PRODUCTION);
+    }
+
+    public EnvironmentIntegrityChecker(EnvProbe probe, Profile profile) {
+        this(probe, blockingForProfile(profile), profile);
     }
 
     public EnvironmentIntegrityChecker(EnvProbe probe, Set<Finding> blocking) {
+        this(probe, blocking, Profile.PRODUCTION);
+    }
+
+    public EnvironmentIntegrityChecker(EnvProbe probe, Set<Finding> blocking, Profile profile) {
         this.probe = probe;
-        this.blocking = blocking;
+        this.blocking = Collections.unmodifiableSet(EnumSet.copyOf(blocking));
+        this.profile = profile != null ? profile : Profile.PRODUCTION;
+    }
+
+    public Profile profile() {
+        return profile;
     }
 
     public Result check() {

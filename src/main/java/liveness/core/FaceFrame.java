@@ -34,6 +34,7 @@ public final class FaceFrame {
     private final double brightnessMean;
     private final double[] landmarks;     // flattened landmark coords (nullable until detector runs)
     private final long pHash;             // 64-bit perceptual hash for freeze/loop detection (0 = not computed)
+    private final byte[] encodedBytes;    // original encoded bytes (JPEG/JP2/ISO) for final capture imageSha256
 
     /**
      * M1-compatible constructor (for existing tests).
@@ -57,7 +58,7 @@ public final class FaceFrame {
                      double brightnessMean, double[] landmarks) {
         this(quality, signature, deviceId, timestampMs, sequenceNum, widthPx, heightPx, pixelData,
              faceBboxX, faceBboxY, faceBboxWidth, faceBboxHeight, yawDeg, pitchDeg, rollDeg,
-             faceCount, laplacianVariance, brightnessMean, landmarks, 0L);
+             faceCount, laplacianVariance, brightnessMean, landmarks, 0L, null);
     }
 
     /**
@@ -71,6 +72,23 @@ public final class FaceFrame {
                      double yawDeg, double pitchDeg, double rollDeg,
                      int faceCount, double laplacianVariance,
                      double brightnessMean, double[] landmarks, long pHash) {
+        this(quality, signature, deviceId, timestampMs, sequenceNum, widthPx, heightPx, pixelData,
+             faceBboxX, faceBboxY, faceBboxWidth, faceBboxHeight, yawDeg, pitchDeg, rollDeg,
+             faceCount, laplacianVariance, brightnessMean, landmarks, pHash, null);
+    }
+
+    /**
+     * Full constructor including perceptual hash and encoded image bytes.
+     */
+    public FaceFrame(FrameQuality quality, String signature, int deviceId,
+                     long timestampMs, int sequenceNum,
+                     int widthPx, int heightPx, byte[] pixelData,
+                     int faceBboxX, int faceBboxY,
+                     int faceBboxWidth, int faceBboxHeight,
+                     double yawDeg, double pitchDeg, double rollDeg,
+                     int faceCount, double laplacianVariance,
+                     double brightnessMean, double[] landmarks, long pHash,
+                     byte[] encodedBytes) {
         this.quality = Objects.requireNonNull(quality, "quality");
         this.signature = Objects.requireNonNull(signature, "signature");
         this.deviceId = deviceId;
@@ -91,6 +109,7 @@ public final class FaceFrame {
         this.brightnessMean = brightnessMean;
         this.landmarks = landmarks;
         this.pHash = pHash;
+        this.encodedBytes = encodedBytes;
     }
 
     // --- M1 getters ---
@@ -104,6 +123,7 @@ public final class FaceFrame {
     public int widthPx()              { return widthPx; }
     public int heightPx()             { return heightPx; }
     public byte[] pixelData()         { return pixelData; }
+    public byte[] encodedBytes()       { return encodedBytes; }
     public int faceBboxX()            { return faceBboxX; }
     public int faceBboxY()            { return faceBboxY; }
     public int faceBboxWidth()        { return faceBboxWidth; }
@@ -120,6 +140,11 @@ public final class FaceFrame {
     /** True if this frame has pixel data attached. */
     public boolean hasPixelData() {
         return pixelData != null && pixelData.length > 0;
+    }
+
+    /** True if this frame has encoded bytes attached. */
+    public boolean hasEncodedBytes() {
+        return encodedBytes != null && encodedBytes.length > 0;
     }
 
     /** True if landmarks have been computed. */

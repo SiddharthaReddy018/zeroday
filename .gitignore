@@ -27,3 +27,9 @@ models/
 docs/
 *handoff*.md
 *master_plan*.md
+
+# Gradle & Android build
+.gradle/
+**/build/
+android/.gradle/
+

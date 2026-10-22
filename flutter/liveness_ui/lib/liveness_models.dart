@@ -33,6 +33,7 @@ LivenessUiState uiStateFor(String engineState) {
     case 'RETRY_AVAILABLE':
       return LivenessUiState.retry;
     case 'BLOCKED_ATTACK':
+    case 'VERIFICATION_FAILED':
     case 'FAILED_MAX_RETRIES':
       return LivenessUiState.maxRetry;
     case 'DEVICE_ERROR':

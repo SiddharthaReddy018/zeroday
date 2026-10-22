@@ -1,18 +1,13 @@
 package liveness.android;
 
-import java.util.Objects;
-
 /**
- * Reference implementation of {@link FaceEmbedder} that produces a normalized 128-dimensional
- * identity descriptor from facial RGB image patches.
- * <p>
- * In production deployments with OpenCV Zoo SFace or Google ML Kit Face Mesh, adopters can
- * inject a specialized neural embedder. This reference implementation provides deterministic,
- * baseline feature extraction so that cross-stream binding functions reliably out of the box.
+ * Test-only grid embedder (formerly ReferenceFaceEmbedder).
+ * 8x8 spatial grid of mean luminance + gradient over the frame.
+ * For testing/simulation only; not an identity model.
  */
-public final class ReferenceFaceEmbedder implements FaceEmbedder {
+public final class TestGridEmbedder implements FaceEmbedder {
 
-    private static final int GRID_SIZE = 8; // 8x8 spatial grid -> 64 cells * 2 channels (luma + grad) = 128-D
+    private static final int GRID_SIZE = 8;
     private static final int EMBEDDING_DIM = 128;
 
     @Override
@@ -28,7 +23,6 @@ public final class ReferenceFaceEmbedder implements FaceEmbedder {
         int cellW = Math.max(1, width / GRID_SIZE);
         int cellH = Math.max(1, height / GRID_SIZE);
 
-        // Compute average luminance and horizontal gradient per grid cell
         int idx = 0;
         for (int gy = 0; gy < GRID_SIZE; gy++) {
             for (int gx = 0; gx < GRID_SIZE; gx++) {
@@ -68,7 +62,7 @@ public final class ReferenceFaceEmbedder implements FaceEmbedder {
             }
         }
 
-        // L2-normalize the vector
+        // L2-normalize
         double normSq = 0.0;
         for (float v : embedding) {
             normSq += v * v;

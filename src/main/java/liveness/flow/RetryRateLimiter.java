@@ -1,16 +1,16 @@
 package liveness.flow;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.Clock;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Sliding-window retry rate limiter (§6.8).
  * <p>
- * Tracks retry counts per {@code transactionId} and per {@code machineId+userId}.
- * <p>
- * In production this is persisted in the encrypted local DB.
- * This in-memory implementation is for M1 testing only.
+ * Tracks retry counts per {@code transactionId} and per {@code machineId+userId} within a sliding time window.
+ * Thread-safe via ConcurrentHashMap and lock-free timestamp queues with an injectable clock.
  * <p>
  * DEVICE_ERROR with reason DEVICE_UNAVAILABLE does not count against budget.
  * DEVICE_ERROR with reason INTEGRITY_FAILURE counts toward the lock budget.
@@ -26,29 +26,68 @@ public final class RetryRateLimiter {
         INTEGRITY_FAILURE
     }
 
+    public static final long DEFAULT_WINDOW_MS = 15 * 60 * 1000L; // 15 minutes sliding window
+
     private final int maxRetries;
     private final int maxDeviceReconnects;
+    private final long windowDurationMs;
+    private final Clock clock;
 
-    // Per-transaction counters
-    private final Map<String, Integer> retryCountByTransaction = new HashMap<>();
-    // Per machine+user counters
-    private final Map<String, Integer> retryCountByMachineUser = new HashMap<>();
-    // Device reconnect attempts
-    private final Map<String, Integer> reconnectCount = new HashMap<>();
+    // Per-transaction timestamp records
+    private final ConcurrentMap<String, ConcurrentLinkedDeque<Long>> retryTimestampsByTx = new ConcurrentHashMap<>();
+    // Per machine+user timestamp records
+    private final ConcurrentMap<String, ConcurrentLinkedDeque<Long>> retryTimestampsByMachineUser = new ConcurrentHashMap<>();
+    // Benign reconnect attempts
+    private final ConcurrentMap<String, ConcurrentLinkedDeque<Long>> reconnectTimestamps = new ConcurrentHashMap<>();
 
-    /**
-     * @param maxRetries         maximum retry budget per transaction
-     * @param maxDeviceReconnects maximum benign device reconnect attempts
-     */
-    public RetryRateLimiter(int maxRetries, int maxDeviceReconnects) {
+    public RetryRateLimiter(int maxRetries, int maxDeviceReconnects, long windowDurationMs, Clock clock) {
         if (maxRetries < 0) throw new IllegalArgumentException("maxRetries must be >= 0");
         if (maxDeviceReconnects < 0) throw new IllegalArgumentException("maxDeviceReconnects must be >= 0");
+        if (windowDurationMs <= 0) throw new IllegalArgumentException("windowDurationMs must be > 0");
         this.maxRetries = maxRetries;
         this.maxDeviceReconnects = maxDeviceReconnects;
+        this.windowDurationMs = windowDurationMs;
+        this.clock = Objects.requireNonNull(clock, "clock");
+    }
+
+    public RetryRateLimiter(int maxRetries, int maxDeviceReconnects) {
+        this(maxRetries, maxDeviceReconnects, DEFAULT_WINDOW_MS, Clock.systemUTC());
     }
 
     public RetryRateLimiter(int maxRetries) {
-        this(maxRetries, 3);
+        this(maxRetries, 3, DEFAULT_WINDOW_MS, Clock.systemUTC());
+    }
+
+    private void evictExpired(ConcurrentLinkedDeque<Long> deque, long now) {
+        long cutoff = now - windowDurationMs;
+        while (!deque.isEmpty()) {
+            Long first = deque.peekFirst();
+            if (first != null && first < cutoff) {
+                deque.pollFirst();
+            } else {
+                break;
+            }
+        }
+    }
+
+    private int activeCount(ConcurrentMap<String, ConcurrentLinkedDeque<Long>> map, String key, long now) {
+        ConcurrentLinkedDeque<Long> deque = map.get(key);
+        if (deque == null) return 0;
+        evictExpired(deque, now);
+        return deque.size();
+    }
+
+    private void recordTimestamp(ConcurrentMap<String, ConcurrentLinkedDeque<Long>> map, String key, long now) {
+        map.computeIfAbsent(key, k -> new ConcurrentLinkedDeque<>()).addLast(now);
+    }
+
+    /**
+     * Checks whether the machine+user is currently locked due to budget exhaustion.
+     */
+    public boolean isLocked(String machineUserId) {
+        if (machineUserId == null) return false;
+        long now = clock.millis();
+        return activeCount(retryTimestampsByMachineUser, machineUserId, now) >= maxRetries;
     }
 
     /**
@@ -62,15 +101,16 @@ public final class RetryRateLimiter {
         Objects.requireNonNull(transactionId);
         Objects.requireNonNull(machineUserId);
 
-        int txCount = retryCountByTransaction.getOrDefault(transactionId, 0);
-        int muCount = retryCountByMachineUser.getOrDefault(machineUserId, 0);
+        long now = clock.millis();
+        int txCount = activeCount(retryTimestampsByTx, transactionId, now);
+        int muCount = activeCount(retryTimestampsByMachineUser, machineUserId, now);
 
         if (txCount >= maxRetries || muCount >= maxRetries) {
             return false;
         }
 
-        retryCountByTransaction.put(transactionId, txCount + 1);
-        retryCountByMachineUser.put(machineUserId, muCount + 1);
+        recordTimestamp(retryTimestampsByTx, transactionId, now);
+        recordTimestamp(retryTimestampsByMachineUser, machineUserId, now);
         return true;
     }
 
@@ -84,20 +124,17 @@ public final class RetryRateLimiter {
                                      DeviceErrorReason reason) {
         Objects.requireNonNull(transactionId);
         Objects.requireNonNull(machineUserId);
+        long now = clock.millis();
 
         if (reason == DeviceErrorReason.INTEGRITY_FAILURE) {
-            // Counts toward the lock budget
-            int txCount = retryCountByTransaction.getOrDefault(transactionId, 0);
-            retryCountByTransaction.put(transactionId, txCount + 1);
-            int muCount = retryCountByMachineUser.getOrDefault(machineUserId, 0);
-            retryCountByMachineUser.put(machineUserId, muCount + 1);
-            return txCount + 1 < maxRetries && muCount + 1 < maxRetries;
+            recordTimestamp(retryTimestampsByTx, transactionId, now);
+            recordTimestamp(retryTimestampsByMachineUser, machineUserId, now);
+            return activeCount(retryTimestampsByTx, transactionId, now) < maxRetries
+                    && activeCount(retryTimestampsByMachineUser, machineUserId, now) < maxRetries;
         } else {
-            // DEVICE_UNAVAILABLE: free, but bounded by reconnect attempts
             String reconnectKey = transactionId + ":" + machineUserId;
-            int count = reconnectCount.getOrDefault(reconnectKey, 0);
-            reconnectCount.put(reconnectKey, count + 1);
-            return count + 1 <= maxDeviceReconnects;
+            recordTimestamp(reconnectTimestamps, reconnectKey, now);
+            return activeCount(reconnectTimestamps, reconnectKey, now) <= maxDeviceReconnects;
         }
     }
 
@@ -106,21 +143,23 @@ public final class RetryRateLimiter {
      * Supervisor exemption never applies.
      */
     public void recordBlockedAttack(String transactionId, String machineUserId) {
-        int txCount = retryCountByTransaction.getOrDefault(transactionId, 0);
-        retryCountByTransaction.put(transactionId, txCount + 1);
-        int muCount = retryCountByMachineUser.getOrDefault(machineUserId, 0);
-        retryCountByMachineUser.put(machineUserId, muCount + 1);
+        if (transactionId == null || machineUserId == null) return;
+        long now = clock.millis();
+        recordTimestamp(retryTimestampsByTx, transactionId, now);
+        recordTimestamp(retryTimestampsByMachineUser, machineUserId, now);
     }
 
-    /** Current retry count for a transaction. */
+    /** Current retry count for a transaction within window. */
     public int retriesUsed(String transactionId) {
-        return retryCountByTransaction.getOrDefault(transactionId, 0);
+        return activeCount(retryTimestampsByTx, transactionId, clock.millis());
     }
 
-    /** Current retry count for a machine+user pair. */
+    /** Current retry count for a machine+user pair within window. */
     public int retriesUsedForMachineUser(String machineUserId) {
-        return retryCountByMachineUser.getOrDefault(machineUserId, 0);
+        return activeCount(retryTimestampsByMachineUser, machineUserId, clock.millis());
     }
 
     public int maxRetries() { return maxRetries; }
+    public long windowDurationMs() { return windowDurationMs; }
+    public Clock clock() { return clock; }
 }

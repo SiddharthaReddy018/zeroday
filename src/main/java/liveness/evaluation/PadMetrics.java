@@ -49,8 +49,8 @@ public final class PadMetrics {
             }
         }
         if (attacks == 0) {
-            return new SpeciesResult(species, 0.0, 0,
-                    new WilsonConfidenceInterval.Interval(0, 0, 0));
+            return new SpeciesResult(species, Double.NaN, 0,
+                    new WilsonConfidenceInterval.Interval(Double.NaN, Double.NaN, Double.NaN));
         }
         double rate = (double) misclassified / attacks;
         WilsonConfidenceInterval.Interval ci =
@@ -59,16 +59,16 @@ public final class PadMetrics {
     }
 
     /**
-     * APCER for all species found in the samples.
+     * APCER for all species found in the samples, returned in deterministic order.
      */
     public Map<String, SpeciesResult> apcerAllSpecies() {
-        Set<String> speciesSet = new HashSet<>();
+        Set<String> speciesSet = new java.util.TreeSet<>();
         for (ScoredSample s : samples) {
             if (s.isAttack() && s.species() != null && !s.species().isEmpty()) {
                 speciesSet.add(s.species());
             }
         }
-        Map<String, SpeciesResult> results = new HashMap<>();
+        Map<String, SpeciesResult> results = new java.util.LinkedHashMap<>();
         for (String sp : speciesSet) {
             results.put(sp, apcer(sp));
         }
@@ -83,6 +83,7 @@ public final class PadMetrics {
         Map<String, SpeciesResult> all = apcerAllSpecies();
         SpeciesResult worst = null;
         for (SpeciesResult r : all.values()) {
+            if (Double.isNaN(r.rate())) continue;
             if (worst == null || r.rate() > worst.rate()) {
                 worst = r;
             }
@@ -108,8 +109,8 @@ public final class PadMetrics {
             }
         }
         if (bonafide == 0) {
-            return new RateResult(0.0, 0,
-                    new WilsonConfidenceInterval.Interval(0, 0, 0));
+            return new RateResult(Double.NaN, 0,
+                    new WilsonConfidenceInterval.Interval(Double.NaN, Double.NaN, Double.NaN));
         }
         double rate = (double) misclassified / bonafide;
         WilsonConfidenceInterval.Interval ci =
@@ -162,13 +163,14 @@ public final class PadMetrics {
         DetPoint best = curve.get(0);
         double bestDiff = Double.MAX_VALUE;
         for (DetPoint p : curve) {
+            if (Double.isNaN(p.apcer()) || Double.isNaN(p.bpcer())) continue;
             double diff = Math.abs(p.apcer() - p.bpcer());
             if (diff < bestDiff) {
                 bestDiff = diff;
                 best = p;
             }
         }
-        return best;
+        return new DetPoint(best.threshold(), best.apcer(), best.bpcer(), "D-EER");
     }
 
     private double pooledApcerAtThreshold(int t) {
@@ -182,7 +184,7 @@ public final class PadMetrics {
                 }
             }
         }
-        return attacks == 0 ? 0.0 : (double) misclassified / attacks;
+        return attacks == 0 ? Double.NaN : (double) misclassified / attacks;
     }
 
     private double bpcerAtThreshold(int t) {
@@ -196,7 +198,7 @@ public final class PadMetrics {
                 }
             }
         }
-        return bonafide == 0 ? 0.0 : (double) misclassified / bonafide;
+        return bonafide == 0 ? Double.NaN : (double) misclassified / bonafide;
     }
 
     // ── Set of species ─────────────────────────────────────────────────
@@ -257,20 +259,27 @@ public final class PadMetrics {
         public WilsonConfidenceInterval.Interval ci() { return ci; }
     }
 
-    /** DET curve point. */
+    /** DET curve point with operating point label. */
     public static final class DetPoint {
         private final int threshold;
         private final double apcer;
         private final double bpcer;
+        private final String label;
 
         public DetPoint(int threshold, double apcer, double bpcer) {
+            this(threshold, apcer, bpcer, "operating_point_t" + threshold);
+        }
+
+        public DetPoint(int threshold, double apcer, double bpcer, String label) {
             this.threshold = threshold;
             this.apcer = apcer;
             this.bpcer = bpcer;
+            this.label = label != null ? label : ("operating_point_t" + threshold);
         }
 
         public int threshold() { return threshold; }
         public double apcer()  { return apcer; }
         public double bpcer()  { return bpcer; }
+        public String label()  { return label; }
     }
 }

@@ -1,6 +1,6 @@
 package liveness.audit;
 
-import liveness.crypto.EcdsaSignerStub;
+import liveness.crypto.Signer;
 
 import java.util.Base64;
 import java.util.Objects;
@@ -38,7 +38,7 @@ public final class AuditSeal {
         return "AUDITHEAD|" + sid + "|" + size + "|" + head + "|" + pub;
     }
 
-    public static SignedHead sign(AuditChain chain, String sessionId, EcdsaSignerStub signer) {
+    public static SignedHead sign(AuditChain chain, String sessionId, Signer signer) {
         Objects.requireNonNull(chain, "chain");
         String pub = Base64.getEncoder().encodeToString(signer.publicKey().getEncoded());
         String head = chain.latestHash();
@@ -47,7 +47,7 @@ public final class AuditSeal {
     }
 
     /** True iff the signature is valid AND the given chain verifies and still matches the signed size and head. */
-    public static boolean verify(SignedHead h, AuditChain chain, EcdsaSignerStub signer) {
+    public static boolean verify(SignedHead h, AuditChain chain, Signer signer) {
         return h != null && chain != null
                 && chain.verify()
                 && chain.size() == h.size()

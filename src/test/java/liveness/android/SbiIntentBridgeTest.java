@@ -354,4 +354,40 @@ class SbiIntentBridgeTest {
         SbiIntentDeviceAdapter a = adapter(new FakeLauncher(), hostFrame(now, 1, 2, 3), 0.1, 5000);
         assertTrue(assertThrows(DeviceException.class, () -> a.captureFinal(TX)).getMessage().startsWith("SBI_TIMEOUT"));
     }
+
+    @Test
+    void discoveryAndCaptureEnforcePackageAllowlist() {
+        try {
+            SbiIntentBridge.setAllowedPackages(java.util.Arrays.asList("com.trusted.sbi"));
+            FakeLauncher l = new FakeLauncher(); // has packages: com.sbi.face
+            DeviceException de = assertThrows(DeviceException.class, () -> SbiIntentBridge.discover(l, 500));
+            assertTrue(de.getMessage().startsWith("SBI_PACKAGE_NOT_ALLOWED"), de.getMessage());
+
+            SbiIntentRequest req = SbiIntentBridge.buildCaptureRequest(DEVICE, "T0123456789", "e", "p", null, 40, 1000, Instant.now());
+            DeviceException ce = assertThrows(DeviceException.class, () -> SbiIntentBridge.capture(l, req, DEV, 1000));
+            assertTrue(ce.getMessage().startsWith("SBI_PACKAGE_NOT_ALLOWED"), ce.getMessage());
+        } finally {
+            SbiIntentBridge.setAllowedPackages(null);
+        }
+    }
+
+    @Test
+    void parseCaptureResponseEnforcesEnvAndPurpose() throws Exception {
+        Map<String, Object> payload = capturePayload(TX, "2026-10-19T10:00:05Z", new byte[]{1, 2, 3});
+        payload.put("env", "Target");
+        payload.put("purpose", "Registration");
+        byte[] resp = captureResponseFor(jwt(payload), "0");
+
+        // Matching env and purpose succeed
+        SbiCaptureResult ok = SbiIntentBridge.parseCaptureResponse(resp, DEV, "Target", "Registration");
+        assertNotNull(ok);
+
+        // Mismatched env throws SBI_WRONG_ENV
+        DeviceException ee = assertThrows(DeviceException.class, () -> SbiIntentBridge.parseCaptureResponse(resp, DEV, "Staging", "Registration"));
+        assertTrue(ee.getMessage().startsWith("SBI_WRONG_ENV"), ee.getMessage());
+
+        // Mismatched purpose throws SBI_WRONG_PURPOSE
+        DeviceException pe = assertThrows(DeviceException.class, () -> SbiIntentBridge.parseCaptureResponse(resp, DEV, "Target", "Auth"));
+        assertTrue(pe.getMessage().startsWith("SBI_WRONG_PURPOSE"), pe.getMessage());
+    }
 }

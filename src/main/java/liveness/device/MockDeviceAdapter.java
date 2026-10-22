@@ -52,8 +52,29 @@ public final class MockDeviceAdapter implements DeviceAdapter {
         NO_FACE
     }
 
-    /** Dummy pixel data for mock frames — non-null so hasPixelData() returns true. */
-    private static final byte[] DUMMY_PIXELS = new byte[]{0x42, 0x4D, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
+    /**
+     * Generates deterministic, pixel-dependent RGB contents based on frame dimensions, scenario, and sequence number.
+     * Replaces the former 8-byte dummy array (S19).
+     */
+    public static byte[] generatePixelData(int width, int height, Scenario scenario, int seqNum) {
+        int length = width * height * 3;
+        byte[] pixels = new byte[length];
+        int sVal = (scenario != null ? scenario.ordinal() : 0) + 1;
+        byte rBase = (byte) ((sVal * 37 + seqNum * 17) & 0xFF);
+        byte gBase = (byte) ((sVal * 59 + seqNum * 31) & 0xFF);
+        byte bBase = (byte) ((sVal * 89 + seqNum * 43) & 0xFF);
+
+        for (int y = 0; y < height; y++) {
+            int rowOffset = y * width * 3;
+            for (int x = 0; x < width; x++) {
+                int idx = rowOffset + x * 3;
+                pixels[idx] = (byte) (rBase ^ (x & 0x7F));
+                pixels[idx + 1] = (byte) (gBase ^ (y & 0x7F));
+                pixels[idx + 2] = (byte) (bBase ^ ((x + y) & 0x7F));
+            }
+        }
+        return pixels;
+    }
 
     private Scenario scenario;
     private boolean open = false;
@@ -141,13 +162,15 @@ public final class MockDeviceAdapter implements DeviceAdapter {
     private FaceFrame buildFrame(Scenario s, int seqNum) {
         long timestamp = System.currentTimeMillis();
         int deviceId = System.identityHashCode(this);
+        int width = 320;
+        int height = 240;
 
         switch (s) {
             case BONA_FIDE:
                 return new FaceFrame(
                         FrameQuality.GOOD, frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, DUMMY_PIXELS,
-                        400, 200, 300, 400,
+                        timestamp, seqNum, width, height, generatePixelData(width, height, s, seqNum),
+                        60, 30, 200, 180,
                         0.0, 0.0, 0.0, 1,
                         250.0, 128.0, null);
 
@@ -161,8 +184,8 @@ public final class MockDeviceAdapter implements DeviceAdapter {
             case DEEPFAKE:
                 return new FaceFrame(
                         FrameQuality.SUSPECT, frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, DUMMY_PIXELS,
-                        400, 200, 280, 380,
+                        timestamp, seqNum, width, height, generatePixelData(width, height, s, seqNum),
+                        60, 30, 190, 170,
                         2.0, 1.0, 0.5, 1,
                         180.0, 115.0, null);
 
@@ -170,8 +193,8 @@ public final class MockDeviceAdapter implements DeviceAdapter {
                 // All frames have identical timestamp to simulate freeze
                 return new FaceFrame(
                         FrameQuality.GOOD, "FROZEN_HASH", deviceId,
-                        1000000L, seqNum, 1920, 1080, null,
-                        400, 200, 300, 400,
+                        1000000L, seqNum, width, height, generatePixelData(width, height, s, 1),
+                        60, 30, 200, 180,
                         0.0, 0.0, 0.0, 1,
                         250.0, 128.0, null);
 
@@ -180,19 +203,19 @@ public final class MockDeviceAdapter implements DeviceAdapter {
                 int loopIdx = (seqNum - 1) % LOOP_CYCLE;
                 return new FaceFrame(
                         FrameQuality.GOOD, "LOOP_" + loopIdx, deviceId,
-                        timestamp, seqNum, 1920, 1080, null,
-                        400, 200, 300, 400,
+                        timestamp, seqNum, width, height, generatePixelData(width, height, s, loopIdx + 1),
+                        60, 30, 200, 180,
                         0.0, 0.0, 0.0, 1,
                         250.0, 128.0, null);
 
             case VIRTUAL_CAMERA:
                 // Resolution change mid-stream
-                int width = (seqNum % 2 == 0) ? 1920 : 1280;
-                int height = (seqNum % 2 == 0) ? 1080 : 720;
+                int vWidth = (seqNum % 2 == 0) ? 320 : 240;
+                int vHeight = (seqNum % 2 == 0) ? 240 : 180;
                 return new FaceFrame(
                         FrameQuality.GOOD, frameSignature(s), deviceId + 1,
-                        timestamp, seqNum, width, height, null,
-                        400, 200, 300, 400,
+                        timestamp, seqNum, vWidth, vHeight, generatePixelData(vWidth, vHeight, s, seqNum),
+                        40, 20, 160, 140,
                         0.0, 0.0, 0.0, 1,
                         250.0, 128.0, null);
 
@@ -202,8 +225,8 @@ public final class MockDeviceAdapter implements DeviceAdapter {
                                 80.0, 25.0, 0.3, 0.0,
                                 200, 0.0, 0.0, 0.0, 1),
                         frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, null,
-                        400, 200, 250, 350,
+                        timestamp, seqNum, width, height, generatePixelData(width, height, s, seqNum),
+                        60, 30, 180, 160,
                         0.0, 0.0, 0.0, 1,
                         80.0, 25.0, null);
 
@@ -213,8 +236,8 @@ public final class MockDeviceAdapter implements DeviceAdapter {
                                 200.0, 128.0, 0.0, 0.0,
                                 200, 0.0, 0.0, 0.0, 3),
                         frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, null,
-                        400, 200, 300, 400,
+                        timestamp, seqNum, width, height, generatePixelData(width, height, s, seqNum),
+                        60, 30, 200, 180,
                         0.0, 0.0, 0.0, 3,
                         200.0, 128.0, null);
 
@@ -224,7 +247,7 @@ public final class MockDeviceAdapter implements DeviceAdapter {
                                 200.0, 128.0, 0.0, 0.0,
                                 0, 0.0, 0.0, 0.0, 0),
                         frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, null,
+                        timestamp, seqNum, width, height, generatePixelData(width, height, s, seqNum),
                         0, 0, 0, 0,
                         0.0, 0.0, 0.0, 0,
                         200.0, 128.0, null);
@@ -233,16 +256,16 @@ public final class MockDeviceAdapter implements DeviceAdapter {
                 // Simulate long delay between frames via large timestamp gaps
                 return new FaceFrame(
                         FrameQuality.GOOD, frameSignature(s), deviceId,
-                        timestamp + (seqNum * 500L), seqNum, 1920, 1080, null,
-                        400, 200, 300, 400,
+                        timestamp + (seqNum * 500L), seqNum, width, height, generatePixelData(width, height, s, seqNum),
+                        60, 30, 200, 180,
                         0.0, 0.0, 0.0, 1,
                         250.0, 128.0, null);
 
             default:
                 return new FaceFrame(
                         FrameQuality.GOOD, frameSignature(s), deviceId,
-                        timestamp, seqNum, 1920, 1080, null,
-                        400, 200, 300, 400,
+                        timestamp, seqNum, width, height, generatePixelData(width, height, s, seqNum),
+                        60, 30, 200, 180,
                         0.0, 0.0, 0.0, 1,
                         250.0, 128.0, null);
         }

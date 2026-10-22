@@ -65,13 +65,19 @@ final class SchemaValidator {
             if (req != null) for (Object k : (List<Object>) req) {
                 if (!obj.containsKey(k)) errs.add(path + ": missing required '" + k + "'");
             }
+            Object addl = schema.get("additionalProperties");
             Object props = schema.get("properties");
-            if (props != null) {
-                Map<String, Object> pm = (Map<String, Object>) props;
-                for (Map.Entry<String, Object> e : obj.entrySet()) {
-                    Object sub = pm.get(e.getKey());
-                    if (sub != null) check((Map<String, Object>) sub, e.getValue(), path + "." + e.getKey(), errs);
+            Map<String, Object> pm = props instanceof Map ? (Map<String, Object>) props : java.util.Collections.emptyMap();
+            if (Boolean.FALSE.equals(addl)) {
+                for (String k : obj.keySet()) {
+                    if (!pm.containsKey(k)) {
+                        errs.add(path + ": additional property not allowed: '" + k + "'");
+                    }
                 }
+            }
+            for (Map.Entry<String, Object> e : obj.entrySet()) {
+                Object sub = pm.get(e.getKey());
+                if (sub != null) check((Map<String, Object>) sub, e.getValue(), path + "." + e.getKey(), errs);
             }
         }
     }

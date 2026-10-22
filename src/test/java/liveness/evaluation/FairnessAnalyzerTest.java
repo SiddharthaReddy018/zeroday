@@ -109,4 +109,40 @@ public class FairnessAnalyzerTest {
         assertTrue(report.contains("Wilson score intervals"));
         assertTrue(report.contains("ANOVA p-values"), "Must not use p-values (R7)");
     }
+
+    @Test
+    public void exploratoryGroupsExcludedFromBiasIndex() {
+        List<ScoredSample> samples = new ArrayList<>();
+        // Group mst_1: 35 subjects, all pass -> BPCER = 0.0
+        for (int i = 0; i < 35; i++) {
+            samples.add(new ScoredSample(90, "bona_fide", "", "bf_c1_" + i,
+                    "mst_1", null, null, null, null));
+        }
+        // Group mst_2: 35 subjects, 7 fail -> BPCER = 0.2
+        for (int i = 0; i < 35; i++) {
+            int score = (i < 7) ? 50 : 90;
+            samples.add(new ScoredSample(score, "bona_fide", "", "bf_c2_" + i,
+                    "mst_2", null, null, null, null));
+        }
+        // Group mst_3: 5 subjects (< 30, exploratory), all fail -> BPCER = 1.0
+        for (int i = 0; i < 5; i++) {
+            samples.add(new ScoredSample(50, "bona_fide", "", "bf_exp_" + i,
+                    "mst_3", null, null, null, null));
+        }
+
+        FairnessAnalyzer fa = new FairnessAnalyzer(samples, 70);
+        // If mst_3 was included, delta would be 1.0 - 0.0 = 1.0.
+        // Because mst_3 is exploratory (<30 subjects), delta should be 0.2 - 0.0 = 0.2.
+        assertEquals(0.2, fa.biasIndex(), 0.001,
+                "Exploratory group with <30 subjects must be excluded from Bias Index delta");
+    }
+
+    @Test
+    public void emptyOrZeroBonafideReturnsNaN() {
+        List<ScoredSample> attackOnly = new ArrayList<>();
+        attackOnly.add(new ScoredSample(10, "attack", "print", "a_1"));
+        FairnessAnalyzer fa = new FairnessAnalyzer(attackOnly, 70);
+        assertEquals(0.0, fa.biasIndex(), 0.001);
+        assertTrue(fa.flaggedGroups().isEmpty());
+    }
 }

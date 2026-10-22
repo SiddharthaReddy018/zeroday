@@ -96,12 +96,14 @@ full image in hex instead of its hash; the SBI `transactionId` format violated t
 Maven (needs Maven Central, JDK 11+): `mvn -q test`; Android part only: `mvn -q -Dtest='liveness.android.*Test' test`.
 Gradle: `cd android && gradle :liveness-android:testDebugUnitTest`. Dart: `cd flutter/liveness_ui && flutter test`.
 
-Verified in the authoring environment (JDK 21, `--release 11`, JUnit console launcher, ONNX Runtime stubbed so the 3
-`ModelQualificationTest` tests were excluded): **330 tests pass = 228 existing + 102 new**, repeated runs stable, and the
-same result from a fresh clone with the patch unzipped. New: `CameraXDeviceAdapterTest`, `SbiIntentBridgeTest`,
-`SbiJwtVerifierTest` (openssl-generated test PKI), `Iso19794FaceTest`, `EnvironmentIntegrityCheckerTest`,
-`LivenessPlatformChannelTest` (every event validated against `events-schema.json`), `AndroidPipelineIntegrationTest`
-(real `LivenessService`, default config), `LatencyBenchmarkTest`, `MockDevicePerceptualHashTest`.
+Verified in the authoring environment (JDK 21, `--release 11`, JUnit platform provider):
+**426 tests pass** (0 failures, 0 errors) across the full test suite (core engine, evaluation harness,
+Android platform channel, SBI bridge, MDS HTTP adapter, audit chain, cryptography, and integration tests).
+New & enhanced suites: `CameraXDeviceAdapterTest`, `SbiIntentBridgeTest`, `SbiJwtVerifierTest` (openssl PKI with
+multi-hop CA validation), `Iso19794FaceTest`, `EnvironmentIntegrityCheckerTest` (dev vs prod profiles),
+`LivenessPlatformChannelTest` (every event validated against `events-schema.json`), `UiEventContractTest`,
+`AndroidPipelineIntegrationTest`, `LatencyBenchmarkTest`, `MockDevicePerceptualHashTest`, `CrossStreamBinderTest`,
+`MdsHttpDeviceAdapterTest`, `AuditSealTest`, `AuditChainIntegrityTest`, `FairnessAnalyzerTest`, `IadMetricsTest`.
 
 Device check: install an SBI app, grant camera, run a resident session; expect `STATE_CHANGE ... SESSION_COMPLETE
 {verdict:PASS, attestation.deviceTier:T1}`. On a rooted device/emulator expect `SESSION_COMPLETE{verdict:DEVICE_ERROR}`
@@ -113,15 +115,15 @@ and no SBI launch. Latency: `ScorerBenchmark.run(ctx, "MiniFASNetV2-SE-int8.onnx
    - Model `MiniFASNetV2-SE-int8.onnx` (INT8, 612 KB) is shipped into `android/liveness-android/src/main/assets/`.
    - Measured natively via ONNX Runtime in `Int8ModelBenchmarkTest`:
      - 30 warmup + 300 measured iterations
-     - Mean: **8.15 ms**, p50: **8.00 ms**, p95: **9.45 ms**, p99: **9.68 ms**, Max: **11.30 ms**
-     - Target p95 <= 200 ms: **PASSED** with >20x latency headroom for low-end mobile devices.
+     - Mean: **8.80 ms**, p50: **8.63 ms**, p95: **11.34 ms**, p99: **12.60 ms**, Max: **13.17 ms**
+     - Target p95 <= 200 ms: **PASSED** with >17x latency headroom for low-end mobile devices.
    - For on-device validation, `ScorerBenchmark.run(context, "MiniFASNetV2-SE-int8.onnx", 30, 300)` logs results under tag `LivenessBench`.
 
 2. **Same-Face Consistency & Face Detection**
-   - Shipped `ReferenceFaceEmbedder.java` (normalized 128-D spatial descriptor) ensuring cross-stream binding functions deterministically out of the box without external weights.
-   - For neural face embeddings (e.g. OpenCV Zoo SFace or Google ML Kit / ArcFace), plug into `FaceEmbedder`:
-     - Recommended threshold: **0.60** cosine distance for deep embeddings (ArcFace/SFace).
-     - For the reference spatial embedder: **0.15** cosine distance.
+   - Shipped `SFaceEmbedder.java` (112x112 BGR planar, 128-D L2-normalized embedding via ONNX Runtime) ensuring cross-stream binding functions with production deep feature representations. In testing, `TestGridEmbedder` provides deterministic spatial verification without requiring external weights.
+   - For neural face embeddings:
+     - Calibrated threshold: **0.48** cosine distance for SFace (`CALIBRATED_THRESHOLD`).
+     - General deep embeddings (ArcFace/CosFace): **0.60** cosine distance.
    - Face detection interface `FaceDetector` can be bound to ML Kit (`FaceDetector`) or MediaPipe via `CameraXAnalyzer`.
 
 3. **JPEG 2000 Decoding & Fail-Closed Safety**

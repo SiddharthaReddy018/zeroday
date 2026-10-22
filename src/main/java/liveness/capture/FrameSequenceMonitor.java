@@ -10,6 +10,9 @@ public class FrameSequenceMonitor {
         FROZEN, LOOP_REPLAY, TIMESTAMP_GAP, TIMESTAMP_NONMONOTONIC, RESOLUTION_CHANGE
     }
 
+    public static final int FREEZE_HAMMING_THRESHOLD = 2;
+    public static final int LOOP_HAMMING_THRESHOLD = 6;
+
     private final int windowSize;
     private final long expectedIntervalMs;
     private final ArrayDeque<FrameFingerprint> buffer;
@@ -45,22 +48,23 @@ public class FrameSequenceMonitor {
         if (buffer.size() > 1) {
             int consecutiveFrozen = 1;
             boolean foundLoop = false;
-            long currentHash = fp.getPHash();
             
             Iterator<FrameFingerprint> it = buffer.descendingIterator();
-            it.next(); // Skip the newly added frame
+            FrameFingerprint current = it.next(); // newly added frame
             
             boolean continuous = true;
             while (it.hasNext()) {
                 FrameFingerprint prev = it.next();
-                if (prev.getPHash() == currentHash) {
+                int dist = current.hammingDistance(prev);
+                if (dist <= FREEZE_HAMMING_THRESHOLD) {
                     if (continuous) {
                         consecutiveFrozen++;
-                    } else {
-                        foundLoop = true;
                     }
                 } else {
                     continuous = false;
+                }
+                if (!continuous && dist <= LOOP_HAMMING_THRESHOLD) {
+                    foundLoop = true;
                 }
             }
             

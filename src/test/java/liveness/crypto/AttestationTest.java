@@ -144,4 +144,21 @@ class AttestationTest {
         assertFalse(signer.verify("tampered-data", signature),
                 "Tampered data should fail verification");
     }
+
+    @Test
+    void attestationStoresAndExposesAuditHeadHashAndEntryCount() {
+        EcdsaSignerStub signer = new EcdsaSignerStub();
+        Attestation.PadResult pad = new Attestation.PadResult(
+                "NO_ATTACK", 20, Collections.singletonList("MiniFASNet"), Collections.emptyList());
+        Attestation att = Attestation.createFromSuccessSession(
+                "subj-1", "sess-1", "img-sha", "head-hash-123",
+                "T1", 5000L, "MiniFASNetV2", 1, "STREAM", pad, 12, signer);
+
+        assertEquals("head-hash-123", att.transcriptSha256());
+        assertEquals("head-hash-123", att.auditHeadHash());
+        assertEquals(12, att.auditEntryCount());
+        assertTrue(att.canonical().contains("head-hash-123"));
+        assertTrue(att.canonical().contains("|12|"));
+        assertTrue(att.verify(signer));
+    }
 }

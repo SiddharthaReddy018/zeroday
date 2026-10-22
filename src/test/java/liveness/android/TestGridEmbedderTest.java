@@ -4,11 +4,11 @@ import liveness.engine.SameFaceChecker;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ReferenceFaceEmbedderTest {
+public class TestGridEmbedderTest {
 
     @Test
     public void embedProducesNormalizedVector() {
-        ReferenceFaceEmbedder embedder = new ReferenceFaceEmbedder();
+        TestGridEmbedder embedder = new TestGridEmbedder();
         byte[] rgb = new byte[100 * 100 * 3];
         for (int i = 0; i < rgb.length; i++) {
             rgb[i] = (byte) (i % 256);
@@ -28,7 +28,7 @@ public class ReferenceFaceEmbedderTest {
 
     @Test
     public void sameImageHasZeroCosineDistance() {
-        ReferenceFaceEmbedder embedder = new ReferenceFaceEmbedder();
+        TestGridEmbedder embedder = new TestGridEmbedder();
         byte[] rgb = new byte[80 * 80 * 3];
         for (int i = 0; i < rgb.length; i++) {
             rgb[i] = (byte) ((i * 13) % 256);
@@ -43,7 +43,7 @@ public class ReferenceFaceEmbedderTest {
 
     @Test
     public void differentImagesHaveNonZeroDistance() {
-        ReferenceFaceEmbedder embedder = new ReferenceFaceEmbedder();
+        TestGridEmbedder embedder = new TestGridEmbedder();
         byte[] img1 = new byte[80 * 80 * 3];
         byte[] img2 = new byte[80 * 80 * 3];
         for (int i = 0; i < img1.length; i++) {
