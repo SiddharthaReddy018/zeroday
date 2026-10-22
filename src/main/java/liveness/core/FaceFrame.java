@@ -35,6 +35,7 @@ public final class FaceFrame {
     private final double[] landmarks;     // flattened landmark coords (nullable until detector runs)
     private final long pHash;             // 64-bit perceptual hash for freeze/loop detection (0 = not computed)
     private final byte[] encodedBytes;    // original encoded bytes (JPEG/JP2/ISO) for final capture imageSha256
+    private final byte[] contentDigest;   // content digest of downsampled gray frame for byte-identical freeze detection
 
     /**
      * M1-compatible constructor (for existing tests).
@@ -89,6 +90,20 @@ public final class FaceFrame {
                      int faceCount, double laplacianVariance,
                      double brightnessMean, double[] landmarks, long pHash,
                      byte[] encodedBytes) {
+        this(quality, signature, deviceId, timestampMs, sequenceNum, widthPx, heightPx, pixelData,
+             faceBboxX, faceBboxY, faceBboxWidth, faceBboxHeight, yawDeg, pitchDeg, rollDeg,
+             faceCount, laplacianVariance, brightnessMean, landmarks, pHash, encodedBytes, null);
+    }
+
+    public FaceFrame(FrameQuality quality, String signature, int deviceId,
+                     long timestampMs, int sequenceNum,
+                     int widthPx, int heightPx, byte[] pixelData,
+                     int faceBboxX, int faceBboxY,
+                     int faceBboxWidth, int faceBboxHeight,
+                     double yawDeg, double pitchDeg, double rollDeg,
+                     int faceCount, double laplacianVariance,
+                     double brightnessMean, double[] landmarks, long pHash,
+                     byte[] encodedBytes, byte[] contentDigest) {
         this.quality = Objects.requireNonNull(quality, "quality");
         this.signature = Objects.requireNonNull(signature, "signature");
         this.deviceId = deviceId;
@@ -110,7 +125,17 @@ public final class FaceFrame {
         this.landmarks = landmarks;
         this.pHash = pHash;
         this.encodedBytes = encodedBytes;
+        if (contentDigest != null) {
+            this.contentDigest = java.util.Arrays.copyOf(contentDigest, contentDigest.length);
+        } else if (pixelData != null && widthPx >= 32 && heightPx >= 32 && pixelData.length >= widthPx * heightPx) {
+            this.contentDigest = liveness.capture.FrameFingerprint.computeContentDigest(pixelData, widthPx, heightPx);
+        } else if (pHash != 0L) {
+            this.contentDigest = java.nio.ByteBuffer.allocate(8).putLong(pHash).array();
+        } else {
+            this.contentDigest = null;
+        }
     }
+
 
     // --- M1 getters ---
     public FrameQuality quality() { return quality; }
@@ -136,6 +161,7 @@ public final class FaceFrame {
     public double brightnessMean()    { return brightnessMean; }
     public double[] landmarks()       { return landmarks; }
     public long pHash()               { return pHash; }
+    public byte[] contentDigest()     { return contentDigest != null ? contentDigest.clone() : null; }
 
     /** True if this frame has pixel data attached. */
     public boolean hasPixelData() {

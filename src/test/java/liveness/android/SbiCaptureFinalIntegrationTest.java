@@ -43,7 +43,7 @@ public class SbiCaptureFinalIntegrationTest {
         o.write((int) (v >> 24)); o.write((int) (v >> 16)); o.write((int) (v >> 8)); o.write((int) v);
     }
 
-    private static byte[] record2005(byte[] image, int imageType, int w, int h, int featurePoints) {
+    public static byte[] record2005(byte[] image, int imageType, int w, int h, int featurePoints) {
         ByteArrayOutputStream face = new ByteArrayOutputStream();
         int blockLen = 20 + 8 * featurePoints + 12 + image.length;
         u32(face, blockLen);

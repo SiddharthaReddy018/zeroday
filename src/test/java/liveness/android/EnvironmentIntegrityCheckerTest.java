@@ -229,4 +229,18 @@ class EnvironmentIntegrityCheckerTest {
         assertThrows(DeviceException.class, a::open);
         assertFalse(cam.isOpen(), "camera must be released when SBI discovery fails");
     }
+
+    @Test
+    void defaultProfileIsProductionAndRejectsHooksAndDebugger() {
+        FakeProbe p = new FakeProbe();
+        EnvironmentIntegrityChecker checker = new EnvironmentIntegrityChecker(p);
+        assertEquals(EnvironmentIntegrityChecker.Profile.PRODUCTION, checker.profile());
+
+        p.debugger = true;
+        assertTrue(checker.check().isCompromised(), "Default (production) profile must disallow attached debugger");
+
+        FakeProbe pFrida = new FakeProbe();
+        pFrida.ports.add(27042);
+        assertTrue(new EnvironmentIntegrityChecker(pFrida).check().isCompromised(), "Default profile must disallow Frida");
+    }
 }

@@ -75,11 +75,11 @@ public final class LivenessService {
                                         String machineUserId,
                                         WorkflowType workflow) {
         if (!liveness.policy.StubPolicy.stubsAllowed()) {
-            if (faceEmbedder == null || faceEmbedder.getClass().getSimpleName().contains("GridEmbedder")
-                    || faceEmbedder.getClass().getSimpleName().contains("ReferenceFaceEmbedder")) {
+            if (faceEmbedder == null || !faceEmbedder.productionGrade()) {
                 throw new IllegalStateException("LivenessService refusing to start outside dev without a production FaceEmbedder (e.g. SFaceEmbedder)");
             }
         }
+
 
         if (retryLimiter.isLocked(machineUserId)) {
             throw new IllegalStateException("LOCKED: machine+user rate limit exceeded for " + machineUserId);
@@ -220,8 +220,9 @@ public final class LivenessService {
 
     private CaptureIntegrityChecker buildCaptureIntegrity(DeviceAdapter device) {
         FrameSequenceMonitor monitor = new FrameSequenceMonitor(
-                config.frameFreezePHashWindowSize(), device.expectedFrameIntervalMs());
+                config.frameFreezePHashWindowSize(), device.expectedFrameIntervalMs(), config);
         DeviceIdentityValidator deviceId = new DeviceIdentityValidator();
+
         FreshnessChecker freshness = new FreshnessChecker(config.rcaptureFreshnessWindowMs());
         SessionTransactionBinder binder = new SessionTransactionBinder();
         return new CaptureIntegrityChecker(monitor, deviceId, freshness, binder);

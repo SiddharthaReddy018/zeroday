@@ -1,16 +1,35 @@
 package liveness.capture;
 
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+
 public class FrameFingerprint {
     private final long pHash;
     private final long timestampMs;
     private final int sequenceNum;
     private final int widthPx;
+    private final byte[] contentDigest;
 
     public FrameFingerprint(long pHash, long timestampMs, int sequenceNum, int widthPx) {
+        this(pHash, timestampMs, sequenceNum, widthPx, ByteBuffer.allocate(8).putLong(pHash).array());
+    }
+
+    public FrameFingerprint(long pHash, long timestampMs, int sequenceNum, int widthPx, byte[] contentDigest) {
         this.pHash = pHash;
         this.timestampMs = timestampMs;
         this.sequenceNum = sequenceNum;
         this.widthPx = widthPx;
+        this.contentDigest = contentDigest != null ? Arrays.copyOf(contentDigest, contentDigest.length) : null;
+    }
+
+    public byte[] getContentDigest() {
+        return contentDigest != null ? Arrays.copyOf(contentDigest, contentDigest.length) : null;
+    }
+
+    public boolean hasContentDigest() {
+        return contentDigest != null;
     }
 
     public long getPHash() {
@@ -108,4 +127,34 @@ public class FrameFingerprint {
         }
         return hash;
     }
+
+    public static byte[] computeDownsampledGray(byte[] grayscalePixels, int width, int height) {
+        if (grayscalePixels == null || width < 32 || height < 32 || grayscalePixels.length < width * height) {
+            return new byte[0];
+        }
+        byte[] downsampled = new byte[32 * 32];
+        double xRatio = (double) width / 32.0;
+        double yRatio = (double) height / 32.0;
+
+        for (int y = 0; y < 32; y++) {
+            int py = Math.min(height - 1, (int) (y * yRatio));
+            int rowOffset = py * width;
+            for (int x = 0; x < 32; x++) {
+                int px = Math.min(width - 1, (int) (x * xRatio));
+                downsampled[y * 32 + x] = grayscalePixels[rowOffset + px];
+            }
+        }
+        return downsampled;
+    }
+
+    public static byte[] computeContentDigest(byte[] grayscalePixels, int width, int height) {
+        byte[] downsampled = computeDownsampledGray(grayscalePixels, width, height);
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return md.digest(downsampled);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 message digest unavailable", e);
+        }
+    }
 }
+

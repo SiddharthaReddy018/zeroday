@@ -56,6 +56,11 @@ public final class SFaceEmbedder implements FaceEmbedder, AutoCloseable {
     }
 
     @Override
+    public boolean productionGrade() {
+        return true;
+    }
+
+    @Override
     public float[] embed(byte[] rgb, int width, int height) {
         if (rgb == null || width <= 0 || height <= 0 || rgb.length < width * height * 3) {
             throw new IllegalArgumentException("Invalid RGB buffer for SFace embedding");

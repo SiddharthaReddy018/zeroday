@@ -57,14 +57,31 @@ public final class EvaluationHarness {
      * @throws IOException if manifest cannot be read
      */
     public EvaluationResult run(Path manifestPath) throws IOException {
+        return run(manifestPath, false);
+    }
+
+    /**
+     * Runs the full evaluation on a manifest file with optional exploratory mode.
+     */
+    public EvaluationResult run(Path manifestPath, boolean allowExploratory) throws IOException {
         List<ManifestEntry> allEntries = ManifestLoader.load(manifestPath);
-        return run(allEntries);
+        return run(allEntries, allowExploratory);
     }
 
     /**
      * Runs the full evaluation on pre-loaded manifest entries.
      */
     public EvaluationResult run(List<ManifestEntry> allEntries) {
+        return run(allEntries, false);
+    }
+
+    /**
+     * Runs the full evaluation on pre-loaded manifest entries with optional exploratory mode.
+     *
+     * @param allEntries manifest entries
+     * @param allowExploratory true to bypass strict Rule of 30 / empty split requirements
+     */
+    public EvaluationResult run(List<ManifestEntry> allEntries, boolean allowExploratory) {
         // Split by the manifest's split column
         List<ManifestEntry> trainEntries = new ArrayList<>();
         List<ManifestEntry> devEntries = new ArrayList<>();
@@ -85,6 +102,26 @@ public final class EvaluationHarness {
                     // skip unknown splits
                     break;
             }
+        }
+
+        int testBonafide = 0;
+        int testAttacks = 0;
+        for (ManifestEntry e : testEntries) {
+            if (e.isBonafide()) {
+                testBonafide++;
+            } else if (e.isAttack()) {
+                testAttacks++;
+            }
+        }
+
+        boolean emptySplits = trainEntries.isEmpty() || testEntries.isEmpty();
+        boolean ruleOf30Violated = testBonafide < 30 || testAttacks < 30;
+
+        if ((emptySplits || ruleOf30Violated) && !allowExploratory) {
+            throw new IllegalStateException("Rule of 30 / dataset split violation: trainEntries=" + trainEntries.size()
+                    + ", testEntries=" + testEntries.size()
+                    + ", testBonafide=" + testBonafide + " (need >=30), testAttacks=" + testAttacks + " (need >=30). "
+                    + "Pass allowExploratory=true to permit exploratory evaluations.");
         }
 
         // Score test split only (§12.3: run test split once with frozen thresholds)
@@ -109,10 +146,12 @@ public final class EvaluationHarness {
         // Compute metrics
         PadMetrics padMetrics = new PadMetrics(scoredSamples, threshold);
         FairnessAnalyzer fairness = new FairnessAnalyzer(scoredSamples, threshold);
-        IadMetrics iadMetrics = new IadMetrics(); // populated externally
+        IadMetrics iadMetrics = new IadMetrics();
+        // Run synthetic IAD mechanism evaluation through real verification components
+        new IadMechanismRunner().run(iadMetrics, 30, 30, 30, 30);
 
         // Generate report
-        EvaluationReport report = new EvaluationReport(padMetrics, iadMetrics, fairness, latency);
+        EvaluationReport report = new EvaluationReport(padMetrics, iadMetrics, fairness, latency, allowExploratory);
 
         return new EvaluationResult(
                 allEntries.size(), trainEntries.size(), devEntries.size(), testEntries.size(),

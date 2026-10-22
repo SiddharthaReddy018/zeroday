@@ -194,4 +194,18 @@ class SbiJwtVerifierTest {
         String jwt = sign(DEVICE_CERT, DEVICE_KEY, "RS256", "{\"digitalId\":\"" + badDidJwt + "\"}");
         assertTrue(reason(assertThrows(SbiJwtVerifier.VerificationException.class, () -> verifier(ROOT_CERT).verify(jwt))).startsWith("NESTED_DIGITAL_ID_INVALID"));
     }
+
+    @Test
+    void rejectsChainWithBrokenIssuerLink() throws Exception {
+        // CHAIN_LEAF_CERT was signed by CHAIN_INTER_CERT, not ROGUE_CERT
+        String jwt = signChain(Arrays.asList(CHAIN_LEAF_CERT, ROGUE_CERT), CHAIN_LEAF_KEY, "RS256", "{}");
+        assertEquals("CHAIN_VERIFICATION_FAILED", reason(assertThrows(SbiJwtVerifier.VerificationException.class, () -> verifier(CHAIN_ROOT_CERT).verify(jwt))));
+    }
+
+    @Test
+    void rejectsChainWhenIntermediateNotSignedByAnchor() throws Exception {
+        // Multi-hop chain rooted at CHAIN_ROOT_CERT, but verifier only trusts unrelated ROOT_CERT
+        String jwt = signChain(Arrays.asList(CHAIN_LEAF_CERT, CHAIN_INTER_CERT), CHAIN_LEAF_KEY, "RS256", "{}");
+        assertEquals("UNTRUSTED_CERT", reason(assertThrows(SbiJwtVerifier.VerificationException.class, () -> verifier(ROOT_CERT).verify(jwt))));
+    }
 }

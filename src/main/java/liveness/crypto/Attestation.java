@@ -149,6 +149,32 @@ public final class Attestation {
         return signer.verify(canonical(), signature);
     }
 
+    /**
+     * Verifies that the provided audit chain is internally consistent and reproduces
+     * the exact head hash sealed into this attestation (Section 6.5).
+     *
+     * @param chain the audit chain to verify against this attestation
+     * @return true if chain verifies and its head hash matches this attestation's head hash
+     */
+    public boolean verifyAuditChain(liveness.audit.AuditChain chain) {
+        if (chain == null) return false;
+        if (!chain.verify()) return false;
+        if (auditEntryCount >= 0 && chain.size() != auditEntryCount) return false;
+        return Objects.equals(auditHeadHash(), chain.latestHash());
+    }
+
+    /**
+     * Verifies that the provided audit log is internally consistent and reproduces
+     * the exact head hash sealed into this attestation (Section 6.5).
+     *
+     * @param log the audit log to verify against this attestation
+     * @return true if log's chain verifies and matches this attestation's head hash
+     */
+    public boolean verifyAuditLog(liveness.audit.AuditLog log) {
+        if (log == null) return false;
+        return verifyAuditChain(log.chain());
+    }
+
     // --- Getters ---
     public String subjectId()        { return subjectId; }
     public String sessionId()        { return sessionId; }
@@ -156,6 +182,7 @@ public final class Attestation {
     public String imageSha256()      { return imageSha256; }
     public String transcriptSha256() { return transcriptSha256; }
     public String auditHeadHash()    { return transcriptSha256; }
+    public String auditLogHeadHash() { return transcriptSha256; }
     public int auditEntryCount()     { return auditEntryCount; }
     public String deviceTier()       { return deviceTier; }
     public long captureTimestamp()    { return captureTimestamp; }

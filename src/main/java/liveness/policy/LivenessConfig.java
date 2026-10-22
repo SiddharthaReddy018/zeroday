@@ -47,7 +47,12 @@ public final class LivenessConfig {
 
     // --- Frame sequence monitor ---
     private final int frameFreezePHashWindowSize;
+    private final int freezeConsecutiveFrames;
+    private final int loopSequenceLengthK;
+    private final int loopHammingThreshold;
+    private final int freezeHammingThreshold;
     private final long rcaptureFreshnessWindowMs;
+
 
     // --- Config version ---
     private final int configVersion;
@@ -78,6 +83,10 @@ public final class LivenessConfig {
         this.pitchLookThreshold = b.pitchLookThreshold;
         this.minActionFrames = b.minActionFrames;
         this.frameFreezePHashWindowSize = b.frameFreezePHashWindowSize;
+        this.freezeConsecutiveFrames = b.freezeConsecutiveFrames;
+        this.loopSequenceLengthK = b.loopSequenceLengthK;
+        this.loopHammingThreshold = b.loopHammingThreshold;
+        this.freezeHammingThreshold = b.freezeHammingThreshold;
         this.rcaptureFreshnessWindowMs = b.rcaptureFreshnessWindowMs;
         this.configVersion = b.configVersion;
         this.challengeProfile = b.challengeProfile;
@@ -106,6 +115,10 @@ public final class LivenessConfig {
     public double pitchLookThreshold() { return pitchLookThreshold; }
     public int minActionFrames() { return minActionFrames; }
     public int frameFreezePHashWindowSize() { return frameFreezePHashWindowSize; }
+    public int freezeConsecutiveFrames() { return freezeConsecutiveFrames; }
+    public int loopSequenceLengthK() { return loopSequenceLengthK; }
+    public int loopHammingThreshold() { return loopHammingThreshold; }
+    public int freezeHammingThreshold() { return freezeHammingThreshold; }
     public long rcaptureFreshnessWindowMs() { return rcaptureFreshnessWindowMs; }
     public int configVersion() { return configVersion; }
     public String challengeProfile() { return challengeProfile; }
@@ -142,6 +155,10 @@ public final class LivenessConfig {
         private double pitchLookThreshold = 10.0;
         private int minActionFrames = 2;
         private int frameFreezePHashWindowSize = 5;
+        private int freezeConsecutiveFrames = 5;
+        private int loopSequenceLengthK = 5;
+        private int loopHammingThreshold = 6;
+        private int freezeHammingThreshold = 2;
         private long rcaptureFreshnessWindowMs = 30000;
         private int configVersion = 1;
         private String challengeProfile = "DEFAULT";
@@ -167,7 +184,19 @@ public final class LivenessConfig {
         public Builder yawLookThreshold(double v)      { this.yawLookThreshold = v; return this; }
         public Builder pitchLookThreshold(double v)    { this.pitchLookThreshold = v; return this; }
         public Builder minActionFrames(int v)          { this.minActionFrames = v; return this; }
-        public Builder frameFreezePHashWindowSize(int v) { this.frameFreezePHashWindowSize = v; return this; }
+        public Builder frameFreezePHashWindowSize(int v) {
+            this.frameFreezePHashWindowSize = v;
+            this.freezeConsecutiveFrames = v;
+            return this;
+        }
+        public Builder freezeConsecutiveFrames(int v) {
+            this.freezeConsecutiveFrames = v;
+            this.frameFreezePHashWindowSize = v;
+            return this;
+        }
+        public Builder loopSequenceLengthK(int v)      { this.loopSequenceLengthK = v; return this; }
+        public Builder loopHammingThreshold(int v)     { this.loopHammingThreshold = v; return this; }
+        public Builder freezeHammingThreshold(int v)   { this.freezeHammingThreshold = v; return this; }
         public Builder rcaptureFreshnessWindowMs(long v) { this.rcaptureFreshnessWindowMs = v; return this; }
         public Builder configVersion(int v)            { this.configVersion = v; return this; }
         public Builder challengeProfile(String v)      { this.challengeProfile = Objects.requireNonNull(v); return this; }
@@ -207,7 +236,20 @@ public final class LivenessConfig {
             if (maxRetries < 0) {
                 throw new IllegalArgumentException("maxRetries must be >= 0");
             }
+            if (freezeConsecutiveFrames < 2) {
+                throw new IllegalArgumentException("freezeConsecutiveFrames must be >= 2, got: " + freezeConsecutiveFrames);
+            }
+            if (loopSequenceLengthK < 5) {
+                throw new IllegalArgumentException("loopSequenceLengthK must be >= 5, got: " + loopSequenceLengthK);
+            }
+            if (loopHammingThreshold < 0 || loopHammingThreshold > 64) {
+                throw new IllegalArgumentException("loopHammingThreshold must be between 0 and 64, got: " + loopHammingThreshold);
+            }
+            if (freezeHammingThreshold < 0 || freezeHammingThreshold > 64) {
+                throw new IllegalArgumentException("freezeHammingThreshold must be between 0 and 64, got: " + freezeHammingThreshold);
+            }
             return new LivenessConfig(this);
         }
     }
+
 }

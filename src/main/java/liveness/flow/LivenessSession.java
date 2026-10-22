@@ -200,7 +200,9 @@ public final class LivenessSession {
                 frame.pHash(),  // computed by the DeviceAdapter from raw pixels (0 if not available)
                 frame.timestampMs(),
                 frame.sequenceNum(),
-                frame.widthPx());
+                frame.widthPx(),
+                frame.contentDigest());
+
 
         Optional<String> integrityViolation = captureIntegrity.checkFrame(
                 fp,

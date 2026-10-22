@@ -56,12 +56,30 @@ public final class EvaluationReport {
         return v;
     }
 
+    private boolean exploratory;
+
+    public EvaluationReport setExploratory(boolean exploratory) {
+        this.exploratory = exploratory;
+        return this;
+    }
+
+    public boolean isExploratory() {
+        return exploratory;
+    }
+
     public EvaluationReport(PadMetrics padMetrics, IadMetrics iadMetrics,
                             FairnessAnalyzer fairness, LatencyMetrics latency) {
+        this(padMetrics, iadMetrics, fairness, latency, false);
+    }
+
+    public EvaluationReport(PadMetrics padMetrics, IadMetrics iadMetrics,
+                            FairnessAnalyzer fairness, LatencyMetrics latency,
+                            boolean exploratory) {
         this.padMetrics = padMetrics;
         this.iadMetrics = iadMetrics;
         this.fairness = fairness;
         this.latency = latency;
+        this.exploratory = exploratory;
     }
 
     /**
@@ -158,8 +176,10 @@ public final class EvaluationReport {
         PadMetrics.SpeciesResult worst = padMetrics.worstSpeciesApcer();
         if (worst != null) {
             String worstRateStr = Double.isNaN(worst.rate()) ? "not measured" : String.format("%.4f", worst.rate());
-            sb.append(String.format("\n**Worst-species headline APCER:** %s = %s %s\n\n",
-                    worst.species(), worstRateStr, worst.ci()));
+            boolean isExploratory = exploratory || padMetrics.totalAttackCount() < 30 || padMetrics.bonafideCount() < 30 || !padMetrics.ruleOf30Satisfied() || worst.count() < 30;
+            String tag = isExploratory ? " [EXPLORATORY]" : "";
+            sb.append(String.format("\n**Worst-species headline APCER%s:** %s = %s (N=%d) %s\n\n",
+                    tag, worst.species(), worstRateStr, worst.count(), worst.ci()));
         }
     }
 
@@ -167,8 +187,10 @@ public final class EvaluationReport {
         sb.append("## BPCER\n\n");
         PadMetrics.RateResult bpcer = padMetrics.bpcer();
         String rateStr = Double.isNaN(bpcer.rate()) ? "not measured" : String.format("%.4f", bpcer.rate());
-        sb.append(String.format("**BPCER:** %s (N=%d) %s\n\n",
-                rateStr, bpcer.count(), bpcer.ci()));
+        boolean isExploratory = exploratory || padMetrics.totalAttackCount() < 30 || padMetrics.bonafideCount() < 30 || !padMetrics.ruleOf30Satisfied() || bpcer.count() < 30;
+        String tag = isExploratory ? " [EXPLORATORY]" : "";
+        sb.append(String.format("**BPCER%s:** %s (N=%d) %s\n\n",
+                tag, rateStr, bpcer.count(), bpcer.ci()));
     }
 
     private void appendDeer(StringBuilder sb) {
@@ -206,8 +228,14 @@ public final class EvaluationReport {
      * @return list of violations (empty = valid)
      */
     public List<String> validateContract() {
+        return validateContract(generate());
+    }
+
+    /**
+     * Validates an arbitrary report text against the contract.
+     */
+    public List<String> validateContract(String report) {
         List<String> violations = new ArrayList<>();
-        String report = generate();
 
         // Must have per-species APCER rows
         Set<String> species = padMetrics.species();
@@ -220,22 +248,44 @@ public final class EvaluationReport {
             }
         }
 
-        // Must have BPCER
-        if (!report.contains("BPCER")) {
-            violations.add("Report missing BPCER");
+        // Must include sample size N and 95% Wilson CI in table
+        if (!report.contains("N (attacks)")) {
+            violations.add("APCER table missing sample size N column");
+        }
+        if (!report.contains("95% CI")) {
+            violations.add("APCER table missing 95% CI column");
         }
 
-        // Must have worst-species headline
-        if (!report.contains("Worst-species headline")) {
-            violations.add("Report missing worst-species headline");
+        // Must have BPCER with N and Wilson CI
+        if (!report.contains("BPCER")) {
+            violations.add("Report missing BPCER");
+        } else {
+            if (!report.matches("(?s).*\\*\\*BPCER.*\\(N=\\d+\\).*")) {
+                violations.add("BPCER missing sample size N");
+            }
+            if (!report.matches("(?s).*\\*\\*BPCER.*\\[[0-9.]+,\\s*[0-9.]+\\].*")) {
+                violations.add("BPCER missing 95% Wilson score confidence interval");
+            }
+        }
+
+        // Must have worst-species headline APCER with N, Wilson CI, and NOT pooled
+        if (!report.contains("Worst-species headline APCER")) {
+            violations.add("Report missing worst-species headline APCER (ISO/IEC 30107-3)");
+        } else {
+            if (!report.matches("(?s).*\\*\\*Worst-species headline APCER.*\\(N=\\d+\\).*")) {
+                violations.add("Worst-species headline APCER missing sample size N");
+            }
+            if (!report.matches("(?s).*\\*\\*Worst-species headline APCER.*\\[[0-9.]+,\\s*[0-9.]+\\].*")) {
+                violations.add("Worst-species headline APCER missing 95% Wilson score confidence interval");
+            }
+        }
+
+        // Headline APCER/BPCER must NOT be pooled across heterogeneous attack types
+        if (report.contains("Pooled APCER") && report.contains("headline")) {
+            violations.add("Headline APCER must not be pooled across heterogeneous attack types (Section 24.1)");
         }
 
         // Must NOT contain ACER
-        if (report.contains("ACER") && !report.contains("worst-species headline APCER")
-                && !report.contains("APCER")) {
-            violations.add("Report contains ACER (forbidden by §24.1)");
-        }
-        // Explicit ACER check — look for standalone "ACER" metric
         String[] lines = report.split("\n");
         for (String line : lines) {
             // Match "ACER" not part of "APCER" or "BPCER"
@@ -243,6 +293,28 @@ public final class EvaluationReport {
             if (stripped.contains("ACER")) {
                 violations.add("Report contains standalone ACER metric: " + line.trim());
             }
+        }
+
+        // Fails if unmeasured
+        if (padMetrics.sampleCount() > 0) {
+            PadMetrics.SpeciesResult worst = padMetrics.worstSpeciesApcer();
+            if (worst == null || Double.isNaN(worst.rate()) || report.contains("Worst-species headline APCER: not measured")
+                    || report.contains("Worst-species headline APCER [EXPLORATORY]: not measured")) {
+                violations.add("Headline APCER is unmeasured");
+            }
+            PadMetrics.RateResult bpcer = padMetrics.bpcer();
+            if (Double.isNaN(bpcer.rate()) || report.contains("BPCER: not measured")
+                    || report.contains("BPCER [EXPLORATORY]: not measured")) {
+                violations.add("Headline BPCER is unmeasured");
+            }
+        }
+
+        // Fails if missing [EXPLORATORY] label when N < 30
+        boolean nUnder30 = padMetrics.bonafideCount() < 30 || padMetrics.totalAttackCount() < 30 || !padMetrics.ruleOf30Satisfied();
+        if (nUnder30 && !report.contains("[EXPLORATORY]")) {
+            violations.add("Sample size is under Rule of 30 threshold (N < 30: bonafide=" + padMetrics.bonafideCount()
+                    + ", attacks=" + padMetrics.totalAttackCount() + ", subjects=" + padMetrics.bonafideSubjectCount()
+                    + ") but report is missing [EXPLORATORY] label");
         }
 
         // IAD must be in a separate table

@@ -56,6 +56,72 @@ public final class AndroidKeyStoreSigner implements Signer {
         }
     }
 
+    /**
+     * Ensures an EC secp256r1 signing key exists under the specified alias in AndroidKeyStore.
+     * If the key does not exist, generates it via KeyGenParameterSpec.
+     * Uses reflection for Android KeyGenParameterSpec so desktop JVM builds compile cleanly.
+     *
+     * @param alias the keystore key alias
+     * @param attestationChallenge optional byte array for key attestation (nullable)
+     * @throws java.security.KeyStoreException if AndroidKeyStore is unavailable (e.g. running off-device)
+     *                                          or key generation fails
+     */
+    public static void ensureKey(String alias, byte[] attestationChallenge) throws java.security.KeyStoreException {
+        KeyStore keyStore;
+        try {
+            keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER);
+            keyStore.load(null);
+        } catch (Exception e) {
+            throw new java.security.KeyStoreException("AndroidKeyStore is unavailable off-device: " + e.getMessage(), e);
+        }
+
+        try {
+            if (keyStore.containsAlias(alias)) {
+                return;
+            }
+
+            Class<?> builderClass;
+            try {
+                builderClass = Class.forName("android.security.keystore.KeyGenParameterSpec$Builder");
+            } catch (ClassNotFoundException e) {
+                throw new java.security.KeyStoreException("AndroidKeyStore KeyGenParameterSpec not available on desktop JVM; key generation must be performed on Android device or with hardware keystore.", e);
+            }
+
+            int purposeSign = 4; // KeyProperties.PURPOSE_SIGN = 4
+            try {
+                Class<?> kpClass = Class.forName("android.security.keystore.KeyProperties");
+                purposeSign = kpClass.getField("PURPOSE_SIGN").getInt(null);
+            } catch (Exception ignored) {
+            }
+
+            Object builder = builderClass.getConstructor(String.class, int.class).newInstance(alias, purposeSign);
+
+            builderClass.getMethod("setDigests", String[].class).invoke(builder, (Object) new String[]{"SHA-256"});
+            builderClass.getMethod("setAlgorithmParameterSpec", java.security.spec.AlgorithmParameterSpec.class)
+                    .invoke(builder, new java.security.spec.ECGenParameterSpec("secp256r1"));
+
+            if (attestationChallenge != null && attestationChallenge.length > 0) {
+                builderClass.getMethod("setAttestationChallenge", byte[].class)
+                        .invoke(builder, (Object) attestationChallenge);
+            }
+
+            java.security.spec.AlgorithmParameterSpec spec =
+                    (java.security.spec.AlgorithmParameterSpec) builderClass.getMethod("build").invoke(builder);
+
+            java.security.KeyPairGenerator kpg = java.security.KeyPairGenerator.getInstance("EC", KEYSTORE_PROVIDER);
+            kpg.initialize(spec);
+            kpg.generateKeyPair();
+        } catch (java.security.KeyStoreException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new java.security.KeyStoreException("Failed to ensure key in AndroidKeyStore for alias '" + alias + "': " + e.getMessage(), e);
+        }
+    }
+
+    public static void ensureKey(String alias) throws java.security.KeyStoreException {
+        ensureKey(alias, null);
+    }
+
     /** Constructor for wrapping existing KeyStore keys or tests. */
     public AndroidKeyStoreSigner(String keyAlias, PrivateKey privateKey, PublicKey publicKey) {
         this.keyAlias = keyAlias;

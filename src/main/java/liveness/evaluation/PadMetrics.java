@@ -138,6 +138,24 @@ public final class PadMetrics {
         return bonafideSubjectCount() >= 30;
     }
 
+    /** Total count of bona fide presentation samples. */
+    public int bonafideCount() {
+        int count = 0;
+        for (ScoredSample s : samples) {
+            if (s.isBonafide()) count++;
+        }
+        return count;
+    }
+
+    /** Total count of attack presentation samples across all species. */
+    public int totalAttackCount() {
+        int count = 0;
+        for (ScoredSample s : samples) {
+            if (s.isAttack()) count++;
+        }
+        return count;
+    }
+
     // ── DET curve & D-EER ──────────────────────────────────────────────
 
     /**

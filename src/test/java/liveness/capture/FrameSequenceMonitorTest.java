@@ -32,10 +32,27 @@ public class FrameSequenceMonitorTest {
         monitor.addFrame(new FrameFingerprint(100L, 1000L, 1, 640));
         monitor.addFrame(new FrameFingerprint(200L, 1030L, 2, 640));
         monitor.addFrame(new FrameFingerprint(300L, 1060L, 3, 640));
-        Optional<FrameSequenceMonitor.IntegrityViolation> v = monitor.addFrame(new FrameFingerprint(100L, 1090L, 4, 640));
+        Optional<FrameSequenceMonitor.IntegrityViolation> vSingle = monitor.addFrame(new FrameFingerprint(100L, 1090L, 4, 640));
+        Assertions.assertFalse(vSingle.isPresent(), "A single close frame must not fire loop replay");
+
+        // Now test sequence repetition of K=5 frames with non-adjacent separation
+        FrameSequenceMonitor seqMonitor = new FrameSequenceMonitor(20, 30);
+        long[] hashes = {100L, 200L, 300L, 400L, 500L};
+        for (int i = 0; i < 5; i++) {
+            seqMonitor.addFrame(new FrameFingerprint(hashes[i], 1000L + i * 30L, i + 1, 640));
+        }
+        // Intervening frame ensuring segments are non-adjacent
+        seqMonitor.addFrame(new FrameFingerprint(999L, 1150L, 6, 640));
+        for (int i = 0; i < 4; i++) {
+            seqMonitor.addFrame(new FrameFingerprint(hashes[i], 1180L + i * 30L, 7 + i, 640));
+        }
+        Optional<FrameSequenceMonitor.IntegrityViolation> v =
+                seqMonitor.addFrame(new FrameFingerprint(hashes[4], 1300L, 11, 640));
         Assertions.assertTrue(v.isPresent());
         Assertions.assertEquals(FrameSequenceMonitor.IntegrityViolation.LOOP_REPLAY, v.get());
     }
+
+
 
     @Test
     public void testTimestampGap() {
@@ -124,36 +141,42 @@ public class FrameSequenceMonitorTest {
 
     @Test
     public void noisyLoopMustMatch() {
-        FrameSequenceMonitor monitor = new FrameSequenceMonitor(10, 30);
+        FrameSequenceMonitor monitor = new FrameSequenceMonitor(20, 30);
         int w = 64, h = 64;
 
-        byte[] frameA = new byte[w * h];
-        byte[] frameB = new byte[w * h];
-        byte[] frameC = new byte[w * h];
-        for (int i = 0; i < w * h; i++) {
-            frameA[i] = (byte) ((i * 7) % 256);
-            frameB[i] = (byte) ((i * 19 + 50) % 256);
-            frameC[i] = (byte) ((i * 31 + 100) % 256);
+        byte[][] frames = new byte[5][w * h];
+        for (int f = 0; f < 5; f++) {
+            for (int i = 0; i < w * h; i++) {
+                frames[f][i] = (byte) ((i * (f * 7 + 11) + f * 40) % 256);
+            }
         }
 
-        // Frame A with slight sensor noise
-        byte[] frameANoisy = java.util.Arrays.copyOf(frameA, frameA.length);
-        for (int i = 0; i < frameANoisy.length; i += 20) {
-            frameANoisy[i] = (byte) Math.min(255, (frameANoisy[i] & 0xFF) + 3);
+        // Add 5 initial frames
+        for (int f = 0; f < 5; f++) {
+            long hash = FrameFingerprint.computePHash(frames[f], w, h);
+            monitor.addFrame(new FrameFingerprint(hash, 1000L + f * 30L, f + 1, w));
         }
 
-        long hashA = FrameFingerprint.computePHash(frameA, w, h);
-        long hashB = FrameFingerprint.computePHash(frameB, w, h);
-        long hashC = FrameFingerprint.computePHash(frameC, w, h);
-        long hashANoisy = FrameFingerprint.computePHash(frameANoisy, w, h);
+        // Intervening frame ensuring segments are non-adjacent
+        byte[] intervening = new byte[w * h];
+        for (int i = 0; i < w * h; i++) intervening[i] = (byte) ((i * 3 + 77) % 256);
+        long interHash = FrameFingerprint.computePHash(intervening, w, h);
+        monitor.addFrame(new FrameFingerprint(interHash, 1150L, 6, w));
 
-        monitor.addFrame(new FrameFingerprint(hashA, 1000L, 1, w));
-        monitor.addFrame(new FrameFingerprint(hashB, 1030L, 2, w));
-        monitor.addFrame(new FrameFingerprint(hashC, 1060L, 3, w));
-        Optional<FrameSequenceMonitor.IntegrityViolation> v =
-                monitor.addFrame(new FrameFingerprint(hashANoisy, 1090L, 4, w));
+        // Add 5 replayed frames with slight noise
+        Optional<FrameSequenceMonitor.IntegrityViolation> v = Optional.empty();
+        for (int f = 0; f < 5; f++) {
+            byte[] noisy = java.util.Arrays.copyOf(frames[f], frames[f].length);
+            for (int i = 0; i < noisy.length; i += 25) {
+                noisy[i] = (byte) Math.min(255, (noisy[i] & 0xFF) + 2);
+            }
+            long hashNoisy = FrameFingerprint.computePHash(noisy, w, h);
+            v = monitor.addFrame(new FrameFingerprint(hashNoisy, 1180L + f * 30L, 7 + f, w));
+        }
 
-        Assertions.assertTrue(v.isPresent(), "Noisy loop must be detected as integrity violation");
+        Assertions.assertTrue(v.isPresent(), "Noisy loop sequence must be detected as integrity violation");
         Assertions.assertEquals(FrameSequenceMonitor.IntegrityViolation.LOOP_REPLAY, v.get());
     }
+
+
 }

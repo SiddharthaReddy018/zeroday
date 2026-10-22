@@ -112,6 +112,66 @@ public class EvaluationHarnessTest {
         assertTrue(result.latency().percentile("pad_scoring", 50) >= 0);
     }
 
+    @Test
+    public void strictRuleOf30EnforcedByDefault() {
+        List<ManifestEntry> entries = new ArrayList<>();
+        // Only 10 bona fide and 10 attacks in test, train has 5
+        for (int i = 0; i < 5; i++) {
+            entries.add(new ManifestEntry("tr_bf_" + i, "bona_fide", "", "s" + i, "train"));
+        }
+        for (int i = 0; i < 10; i++) {
+            entries.add(new ManifestEntry("te_bf_" + i, "bona_fide", "", "s" + i, "test"));
+            entries.add(new ManifestEntry("te_at_" + i, "attack", "print", "s" + i, "test"));
+        }
+
+        EvaluationHarness harness = new EvaluationHarness(e -> 80, 70);
+        // Default run throws IllegalStateException
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> harness.run(entries));
+        assertTrue(ex.getMessage().contains("Rule of 30"));
+
+        // allowExploratory=true bypasses and marks report [EXPLORATORY]
+        EvaluationHarness.EvaluationResult res = harness.run(entries, true);
+        assertNotNull(res);
+        String report = res.report().generate();
+        assertTrue(report.contains("[EXPLORATORY]"));
+    }
+
+    @Test
+    public void emptySplitThrowsIllegalStateException() {
+        List<ManifestEntry> entries = new ArrayList<>();
+        // 35 bona fide and 35 attacks in test, but 0 in train
+        for (int i = 0; i < 35; i++) {
+            entries.add(new ManifestEntry("te_bf_" + i, "bona_fide", "", "s" + i, "test"));
+            entries.add(new ManifestEntry("te_at_" + i, "attack", "print", "s" + i, "test"));
+        }
+
+        EvaluationHarness harness = new EvaluationHarness(e -> 80, 70);
+        assertThrows(IllegalStateException.class, () -> harness.run(entries));
+
+        EvaluationHarness.EvaluationResult res = harness.run(entries, true);
+        assertNotNull(res);
+    }
+
+    @Test
+    public void iadMechanismRunnerPopulatesRealMetrics() {
+        List<ManifestEntry> entries = buildManifest();
+        EvaluationHarness harness = new EvaluationHarness(e -> 80, 70);
+        EvaluationHarness.EvaluationResult result = harness.run(entries);
+
+        IadMetrics iad = result.iadMetrics();
+        assertNotNull(iad);
+        assertTrue(iad.freezeTotal() >= 30);
+        assertTrue(iad.loopTotal() >= 30);
+        assertTrue(iad.nonceSwapTotal() >= 30);
+        assertTrue(iad.legitimateTotal() >= 30);
+
+        assertTrue(iad.freezeDetectionRate() > 0.9);
+        assertTrue(iad.loopDetectionRate() > 0.9);
+        assertTrue(iad.nonceSwapRejectionRate() > 0.9);
+        assertTrue(iad.mechanismCoverage() > 0.99);
+        assertFalse(Double.isNaN(iad.averageDetectionLatencyMs()));
+    }
+
     private List<ManifestEntry> buildManifest() {
         List<ManifestEntry> entries = new ArrayList<>();
         // Train split

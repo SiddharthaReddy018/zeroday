@@ -390,4 +390,25 @@ class SbiIntentBridgeTest {
         DeviceException pe = assertThrows(DeviceException.class, () -> SbiIntentBridge.parseCaptureResponse(resp, DEV, "Target", "Auth"));
         assertTrue(pe.getMessage().startsWith("SBI_WRONG_PURPOSE"), pe.getMessage());
     }
+
+    @Test
+    void multiPackageAllowlistFiltersOutUntrustedAndKeepsWhitelisted() throws Exception {
+        try {
+            SbiIntentBridge.setAllowedPackages(java.util.Arrays.asList("com.trusted.sbi.one", "com.trusted.sbi.two"));
+            FakeLauncher l = new FakeLauncher();
+            // Simulating multiple resolved packages: one untrusted, one whitelisted
+            l.packages = java.util.Arrays.asList("com.malicious.fake", "com.trusted.sbi.two");
+            l.captureHandler = req -> ok(discoveryResponse("com.trusted.sbi.two", "Ready"));
+
+            SbiDevice device = SbiIntentBridge.discover(l, 500);
+            assertNotNull(device);
+            assertEquals("com.trusted.sbi.two", device.packageName);
+            // Verify com.malicious.fake was never launched
+            for (SbiIntentRequest launched : l.launched) {
+                assertNotEquals("com.malicious.fake", launched.targetPackage());
+            }
+        } finally {
+            SbiIntentBridge.setAllowedPackages(null);
+        }
+    }
 }

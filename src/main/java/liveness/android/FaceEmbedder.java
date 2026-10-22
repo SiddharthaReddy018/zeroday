@@ -6,4 +6,10 @@ package liveness.android;
  */
 public interface FaceEmbedder {
     float[] embed(byte[] rgb, int width, int height);
+
+    /** True only for production-grade deep models (e.g. SFaceEmbedder). Test grids return false. */
+    default boolean productionGrade() {
+        return false;
+    }
 }
+

@@ -177,4 +177,49 @@ public class EvalReportContractTest {
         assertTrue(text.contains("Mitigation only"),
                 "Coverage statement must include deepfake as mitigation only");
     }
+
+    @Test
+    public void validateContractEnforcesSampleSizeAndConfidenceIntervals() {
+        List<ScoredSample> samples = buildTestSamples();
+        PadMetrics metrics = new PadMetrics(samples, 70);
+        EvaluationReport report = new EvaluationReport(metrics, new IadMetrics(), null, null);
+        String text = report.generate();
+
+        assertTrue(text.contains("N (attacks)"), "Must include N column");
+        assertTrue(text.contains("(N="), "Headline metrics must include N");
+        assertTrue(text.contains("95% CI"), "Must include 95% CI column");
+        assertTrue(report.validateContract().isEmpty());
+    }
+
+    @Test
+    public void validateContractFailsIfHeadlineIsPooled() {
+        List<ScoredSample> samples = buildTestSamples();
+        PadMetrics metrics = new PadMetrics(samples, 70);
+        EvaluationReport report = new EvaluationReport(metrics, null, null, null);
+        String rep = report.generate().replace("Worst-species headline APCER", "Pooled APCER headline");
+
+        List<String> violations = report.validateContract(rep);
+        assertFalse(violations.isEmpty());
+        boolean hasPooledViolation = violations.stream().anyMatch(v -> v.contains("pooled"));
+        assertTrue(hasPooledViolation, "Should reject pooled headline APCER");
+    }
+
+    @Test
+    public void validateContractFailsIfMissingExploratoryTagWhenNUnder30() {
+        List<ScoredSample> samples = new ArrayList<>();
+        // Only 5 bona fide samples
+        for (int i = 0; i < 5; i++) {
+            samples.add(new ScoredSample(85, "bona_fide", "", "s" + i));
+            samples.add(new ScoredSample(15, "attack", "print", "s" + i));
+        }
+        PadMetrics metrics = new PadMetrics(samples, 70);
+
+        EvaluationReport report = new EvaluationReport(metrics, null, null, null);
+        String repWithoutExploratory = report.generate().replace("[EXPLORATORY]", "");
+
+        List<String> violations = report.validateContract(repWithoutExploratory);
+        assertFalse(violations.isEmpty());
+        boolean hasExploratoryViolation = violations.stream().anyMatch(v -> v.contains("[EXPLORATORY]"));
+        assertTrue(hasExploratoryViolation, "Should fail contract validation if missing [EXPLORATORY] when N < 30");
+    }
 }

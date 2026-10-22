@@ -16,6 +16,8 @@ public final class IadMetrics {
     private int nonceSwapRejected;
     private int legitimateTotal;
     private int legitimateFalseAlarms;
+    private long totalDetectionLatencyNs;
+    private int latencyMeasurements;
 
     public IadMetrics() {
         // all zeros
@@ -93,6 +95,37 @@ public final class IadMetrics {
         return legitimateTotal == 0 ? Double.NaN : (double) legitimateFalseAlarms / legitimateTotal;
     }
 
+    public void recordDetectionLatencyNs(long ns) {
+        if (ns > 0) {
+            totalDetectionLatencyNs += ns;
+            latencyMeasurements++;
+        }
+    }
+
+    public double averageDetectionLatencyMs() {
+        return latencyMeasurements == 0 ? Double.NaN : (double) totalDetectionLatencyNs / (latencyMeasurements * 1_000_000.0);
+    }
+
+    /**
+     * Mechanism coverage: proportion of tracked IAD threat mechanisms (freeze, loop replay, nonce-swap)
+     * evaluated with at least one presentation.
+     */
+    public double mechanismCoverage() {
+        int mechanisms = 3;
+        int active = (freezeTotal > 0 ? 1 : 0) + (loopTotal > 0 ? 1 : 0) + (nonceSwapTotal > 0 ? 1 : 0);
+        return (double) active / mechanisms;
+    }
+
+    /**
+     * Overall IAD bypass rate: proportion of all attack presentations that were not detected/rejected.
+     */
+    public double bypassRate() {
+        int attackTotal = freezeTotal + loopTotal + nonceSwapTotal;
+        if (attackTotal == 0) return Double.NaN;
+        int bypassed = (freezeTotal - freezeDetected) + (loopTotal - loopDetected) + (nonceSwapTotal - nonceSwapRejected);
+        return (double) bypassed / attackTotal;
+    }
+
     // ── Report ─────────────────────────────────────────────────────────
 
     /**
@@ -108,6 +141,14 @@ public final class IadMetrics {
         row(sb, "Nonce-swap rejection", nonceSwapTotal, nonceSwapRejected, nonceSwapRejectionRate());
         row(sb, "False IAD (legitimate)", legitimateTotal, legitimateFalseAlarms, falseIadRate());
         sb.append("\n> These are detection rates, NOT APCER values (§12.2).\n");
+        if (freezeTotal > 0 || loopTotal > 0 || nonceSwapTotal > 0) {
+            sb.append("\n");
+            sb.append(String.format("- **Mechanism coverage:** %.1f%%\n", mechanismCoverage() * 100.0));
+            sb.append(String.format("- **Overall IAD bypass rate:** %.4f\n", bypassRate()));
+            if (!Double.isNaN(averageDetectionLatencyMs())) {
+                sb.append(String.format("- **Average detection latency:** %.2f ms\n", averageDetectionLatencyMs()));
+            }
+        }
         return sb.toString();
     }
 
