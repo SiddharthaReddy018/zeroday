@@ -5,15 +5,16 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Liveness attestation (§6.5).
+ * Liveness attestation (Section 6.5).
  * <p>
  * Produced ONLY from {@code VERIFYING_FINAL -> SUCCESS}.
  * <p>
  * Canonical string for signing (fields escaped, pipe-delimited):
- * {@code subjectId|sessionId|verdict|imageSha256|transcriptSha256|deviceTier|captureTimestamp|createdAtEpochMs|
- * modelVersion|configVersion|mode|padDecision|padScore|mechanisms|challengeEchoes|signerPublicKey}
+ * {@code subjectId|sessionId|verdict|imageSha256|transcriptSha256|auditHeadHash|auditEventCount|
+ * deviceTier|captureTimestamp|createdAtEpochMs|modelVersion|configVersion|mode|
+ * padDecision|padScore|mechanisms|challengeEchoes|signerPublicKey}
  * <p>
- * {@code imageSha256} is validated non-null before {@code sign()} — intentional NPE if null.
+ * {@code imageSha256} is validated non-null before {@code sign()} -- intentional NPE if null.
  */
 public final class Attestation {
 
@@ -22,6 +23,7 @@ public final class Attestation {
     private final String verdict;          // always "PASS"
     private final String imageSha256;
     private final String transcriptSha256;
+    private final String auditHeadHash;    // real AuditChain latest hash (not an alias)
     private final String deviceTier;
     private final long captureTimestamp;
     private final String modelVersion;
@@ -38,7 +40,7 @@ public final class Attestation {
                 String deviceTier, long captureTimestamp,
                 String modelVersion, int configVersion,
                 String mode, PadResult pad) {
-        this(subjectId, sessionId, imageSha256, transcriptSha256,
+        this(subjectId, sessionId, imageSha256, transcriptSha256, null,
                 deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, -1);
     }
 
@@ -47,12 +49,24 @@ public final class Attestation {
                 String deviceTier, long captureTimestamp,
                 String modelVersion, int configVersion,
                 String mode, PadResult pad, int auditEntryCount) {
+        this(subjectId, sessionId, imageSha256, transcriptSha256, null,
+                deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, auditEntryCount);
+    }
+
+    Attestation(String subjectId, String sessionId,
+                String imageSha256, String transcriptSha256,
+                String auditHeadHash,
+                String deviceTier, long captureTimestamp,
+                String modelVersion, int configVersion,
+                String mode, PadResult pad, int auditEntryCount) {
         this.subjectId = Objects.requireNonNull(subjectId, "subjectId");
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.verdict = "PASS";
-        // intentional: NPE if imageSha256 is null (§6.5)
+        // intentional: NPE if imageSha256 is null (Section 6.5)
         this.imageSha256 = Objects.requireNonNull(imageSha256, "imageSha256");
         this.transcriptSha256 = Objects.requireNonNull(transcriptSha256, "transcriptSha256");
+        // auditHeadHash defaults to transcriptSha256 for backward compatibility
+        this.auditHeadHash = auditHeadHash != null ? auditHeadHash : transcriptSha256;
         this.deviceTier = Objects.requireNonNull(deviceTier, "deviceTier");
         this.captureTimestamp = captureTimestamp;
         this.modelVersion = Objects.requireNonNull(modelVersion, "modelVersion");
@@ -64,7 +78,7 @@ public final class Attestation {
     }
 
     /**
-     * Factory reachable only from the session success commit path (§6.5, S10).
+     * Factory reachable only from the session success commit path (Section 6.5, S10).
      */
     public static Attestation createFromSuccessSession(
             String subjectId, String sessionId,
@@ -82,8 +96,22 @@ public final class Attestation {
             String deviceTier, long captureTimestamp,
             String modelVersion, int configVersion,
             String mode, PadResult pad, int auditEntryCount, Signer signer) {
+        return createFromSuccessSession(subjectId, sessionId, imageSha256, transcriptSha256,
+                null, deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, auditEntryCount, signer);
+    }
+
+    /**
+     * Full factory with separate auditHeadHash (R4).
+     */
+    public static Attestation createFromSuccessSession(
+            String subjectId, String sessionId,
+            String imageSha256, String transcriptSha256,
+            String auditHeadHash,
+            String deviceTier, long captureTimestamp,
+            String modelVersion, int configVersion,
+            String mode, PadResult pad, int auditEntryCount, Signer signer) {
         Attestation a = new Attestation(
-                subjectId, sessionId, imageSha256, transcriptSha256,
+                subjectId, sessionId, imageSha256, transcriptSha256, auditHeadHash,
                 deviceTier, captureTimestamp, modelVersion, configVersion, mode, pad, auditEntryCount);
         if (signer != null) {
             a.sign(signer);
@@ -93,11 +121,14 @@ public final class Attestation {
 
     /**
      * The canonical string used for ECDSA signing.
+     * Includes auditHeadHash and auditEventCount so that tail truncation,
+     * reordering, or count alteration breaks the signature.
      */
     public String canonical() {
         StringBuilder sb = new StringBuilder();
         field(sb, subjectId); field(sb, sessionId); field(sb, verdict); field(sb, imageSha256);
         field(sb, transcriptSha256);
+        field(sb, auditHeadHash);
         if (auditEntryCount >= 0) {
             field(sb, String.valueOf(auditEntryCount));
         }
@@ -151,10 +182,10 @@ public final class Attestation {
 
     /**
      * Verifies that the provided audit chain is internally consistent and reproduces
-     * the exact head hash sealed into this attestation (Section 6.5).
+     * the exact head hash and event count sealed into this attestation (Section 6.5, R4).
      *
      * @param chain the audit chain to verify against this attestation
-     * @return true if chain verifies and its head hash matches this attestation's head hash
+     * @return true if chain verifies and its head hash + size match this attestation
      */
     public boolean verifyAuditChain(liveness.audit.AuditChain chain) {
         if (chain == null) return false;
@@ -181,8 +212,9 @@ public final class Attestation {
     public String verdict()          { return verdict; }
     public String imageSha256()      { return imageSha256; }
     public String transcriptSha256() { return transcriptSha256; }
-    public String auditHeadHash()    { return transcriptSha256; }
-    public String auditLogHeadHash() { return transcriptSha256; }
+    /** The real AuditChain latest hash bound into this attestation (R4). Not an alias of transcriptSha256. */
+    public String auditHeadHash()    { return auditHeadHash; }
+    public String auditLogHeadHash() { return auditHeadHash; }
     public int auditEntryCount()     { return auditEntryCount; }
     public String deviceTier()       { return deviceTier; }
     public long captureTimestamp()    { return captureTimestamp; }
@@ -194,7 +226,7 @@ public final class Attestation {
     public byte[] signature()        { return signature; }
 
     /**
-     * PAD result sub-record (§6.5).
+     * PAD result sub-record (Section 6.5).
      * Score direction at MOSIP boundary: padDecisionScore = 100 - livenessScore
      * (lower = more bona fide, MOSIP issue #1117).
      */

@@ -8,10 +8,10 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for ECDSA attestation (§6.5).
+ * Tests for ECDSA attestation (Section 6.5).
  * <ul>
  *   <li>ECDSA signs and verifies</li>
- *   <li>imageSha256 null → NPE</li>
+ *   <li>imageSha256 null -> NPE</li>
  *   <li>Tampered data fails verification</li>
  * </ul>
  */
@@ -118,7 +118,7 @@ class AttestationTest {
 
     @Test
     void scoreMapping() {
-        // Internal livenessScore=75 → padDecisionScore=25 (100-75)
+        // Internal livenessScore=75 -> padDecisionScore=25 (100-75)
         // Lower = more bona fide (MOSIP issue #1117)
         int livenessScore = 75;
         int padDecisionScore = 100 - livenessScore;
@@ -151,16 +151,59 @@ class AttestationTest {
         Attestation.PadResult pad = new Attestation.PadResult(
                 "NO_ATTACK", 20, Collections.singletonList("MiniFASNet"), Collections.emptyList());
         Attestation att = Attestation.createFromSuccessSession(
-                "subj-1", "sess-1", "img-sha", "head-hash-123",
+                "subj-1", "sess-1", "img-sha", "transcript-sha",
+                "head-hash-123",
                 "T1", 5000L, "MiniFASNetV2", 1, "STREAM", pad, 12, signer);
 
-        assertEquals("head-hash-123", att.transcriptSha256());
+        assertEquals("transcript-sha", att.transcriptSha256());
         assertEquals("head-hash-123", att.auditHeadHash());
         assertEquals("head-hash-123", att.auditLogHeadHash());
         assertEquals(12, att.auditEntryCount());
         assertTrue(att.canonical().contains("head-hash-123"));
         assertTrue(att.canonical().contains("|12|"));
         assertTrue(att.verify(signer));
+    }
+
+    @Test
+    void auditHeadHashDefaultsToTranscriptSha256WhenNotProvided() {
+        EcdsaSignerStub signer = new EcdsaSignerStub();
+        Attestation.PadResult pad = new Attestation.PadResult(
+                "NO_ATTACK", 20, Collections.singletonList("MiniFASNet"), Collections.emptyList());
+        // Use factory without separate auditHeadHash
+        Attestation att = Attestation.createFromSuccessSession(
+                "subj-1", "sess-1", "img-sha", "transcript-sha",
+                "T1", 5000L, "MiniFASNetV2", 1, "STREAM", pad, 12, signer);
+
+        assertEquals("transcript-sha", att.transcriptSha256());
+        assertEquals("transcript-sha", att.auditHeadHash(), "auditHeadHash defaults to transcriptSha256");
+        assertTrue(att.verify(signer));
+    }
+
+    @Test
+    void alteringAuditEntryCountFailsSignatureVerification() {
+        EcdsaSignerStub signer = new EcdsaSignerStub();
+        Attestation.PadResult pad = new Attestation.PadResult(
+                "NO_ATTACK", 15, Collections.singletonList("MiniFASNet"), Collections.emptyList());
+
+        // Create attestation with count=3
+        liveness.audit.AuditChain chain = new liveness.audit.AuditChain();
+        chain.append(new liveness.audit.AuditEvent(1000L, "STATE", "INIT", "session=s1"));
+        chain.append(new liveness.audit.AuditEvent(1033L, "PAD", "SCORE", "scorer=MiniFasNet,score=85"));
+        chain.append(new liveness.audit.AuditEvent(1066L, "STATE", "SUCCESS", "event=COMMIT"));
+
+        Attestation att = Attestation.createFromSuccessSession(
+                "subj-1", "s1", "img-sha", chain.latestHash(),
+                chain.latestHash(),
+                "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, chain.size(), signer);
+        assertTrue(att.verify(signer));
+        assertTrue(att.verifyAuditChain(chain));
+
+        // Truncated chain (2 instead of 3 entries) fails verification
+        liveness.audit.AuditChain truncated = new liveness.audit.AuditChain();
+        truncated.append(new liveness.audit.AuditEvent(1000L, "STATE", "INIT", "session=s1"));
+        truncated.append(new liveness.audit.AuditEvent(1033L, "PAD", "SCORE", "scorer=MiniFasNet,score=85"));
+        assertFalse(att.verifyAuditChain(truncated),
+                "Truncated audit chain (missing an event) must fail verification against stored head+count");
     }
 
     @Test
@@ -176,6 +219,7 @@ class AttestationTest {
                 "NO_ATTACK", 15, Collections.singletonList("MiniFASNet"), Collections.emptyList());
         Attestation att = Attestation.createFromSuccessSession(
                 "subj-1", "s1", "img-sha", chain.latestHash(),
+                chain.latestHash(),
                 "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, chain.size(), signer);
 
         assertEquals(chain.latestHash(), att.auditLogHeadHash());
@@ -195,6 +239,7 @@ class AttestationTest {
                 "NO_ATTACK", 15, Collections.singletonList("MiniFASNet"), Collections.emptyList());
         Attestation att = Attestation.createFromSuccessSession(
                 "subj-1", "s1", "img-sha", chain.latestHash(),
+                chain.latestHash(),
                 "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, chain.size(), signer);
 
         // Truncate by dropping the last event
@@ -219,6 +264,7 @@ class AttestationTest {
                 "NO_ATTACK", 15, Collections.singletonList("MiniFASNet"), Collections.emptyList());
         Attestation att = Attestation.createFromSuccessSession(
                 "subj-1", "s1", "img-sha", chain.latestHash(),
+                chain.latestHash(),
                 "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, chain.size(), signer);
 
         // Recompute chain with modified score: score=15 instead of 85
@@ -230,5 +276,74 @@ class AttestationTest {
 
         assertFalse(att.verifyAuditLog(tamperedLog), "Tampered audit entry must fail verification against head hash");
         assertFalse(att.verifyAuditChain(tamperedChain), "Tampered audit chain must fail verification against head hash");
+    }
+
+    @Test
+    void verifyAuditLogFailsWhenEventsReordered() {
+        liveness.audit.AuditChain chain = new liveness.audit.AuditChain();
+        chain.append(new liveness.audit.AuditEvent(1000L, "STATE", "INIT", "session=s1"));
+        chain.append(new liveness.audit.AuditEvent(1033L, "PAD", "SCORE", "scorer=MiniFasNet,score=85"));
+        chain.append(new liveness.audit.AuditEvent(1066L, "STATE", "SUCCESS", "event=COMMIT"));
+
+        EcdsaSignerStub signer = new EcdsaSignerStub();
+        Attestation.PadResult pad = new Attestation.PadResult(
+                "NO_ATTACK", 15, Collections.singletonList("MiniFASNet"), Collections.emptyList());
+        Attestation att = Attestation.createFromSuccessSession(
+                "subj-1", "s1", "img-sha", chain.latestHash(),
+                chain.latestHash(),
+                "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, chain.size(), signer);
+
+        // Reordered chain (events swapped)
+        liveness.audit.AuditChain reorderedChain = new liveness.audit.AuditChain();
+        reorderedChain.append(new liveness.audit.AuditEvent(1033L, "PAD", "SCORE", "scorer=MiniFasNet,score=85"));
+        reorderedChain.append(new liveness.audit.AuditEvent(1000L, "STATE", "INIT", "session=s1"));
+        reorderedChain.append(new liveness.audit.AuditEvent(1066L, "STATE", "SUCCESS", "event=COMMIT"));
+
+        assertFalse(att.verifyAuditChain(reorderedChain),
+                "Reordered audit chain must produce different hashes and fail verification");
+    }
+
+    @Test
+    void alteredAuditEntryCountFailsSignature() {
+        EcdsaSignerStub signer = new EcdsaSignerStub();
+        Attestation.PadResult pad = new Attestation.PadResult(
+                "NO_ATTACK", 15, Collections.singletonList("MiniFASNet"), Collections.emptyList());
+
+        Attestation att = Attestation.createFromSuccessSession(
+                "subj-1", "s1", "img-sha", "transcript-1", "audit-head-1",
+                "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, 5, signer);
+        assertTrue(att.verify(signer));
+
+        // If count is altered to 6, signature verification on the altered canonical string fails
+        Attestation altered = Attestation.createFromSuccessSession(
+                "subj-1", "s1", "img-sha", "transcript-1", "audit-head-1",
+                "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, 6, null);
+        assertFalse(signer.verify(altered.canonical(), att.signature()),
+                "Altering the audit event count must change canonical string and fail signature");
+    }
+
+    @Test
+    void livenessResultExportsSealedHeadAndCount() {
+        liveness.audit.AuditChain chain = new liveness.audit.AuditChain();
+        chain.append(new liveness.audit.AuditEvent(1000L, "STATE", "INIT", "session=s1"));
+        chain.append(new liveness.audit.AuditEvent(1066L, "STATE", "SUCCESS", "event=COMMIT"));
+
+        EcdsaSignerStub signer = new EcdsaSignerStub();
+        Attestation.PadResult pad = new Attestation.PadResult(
+                "NO_ATTACK", 15, Collections.singletonList("MiniFASNet"), Collections.emptyList());
+        Attestation att = Attestation.createFromSuccessSession(
+                "subj-1", "s1", "img-sha", chain.latestHash(),
+                chain.latestHash(),
+                "T1", 1066L, "MiniFASNetV2", 1, "STREAM", pad, chain.size(), signer);
+
+        liveness.audit.AuditSeal.SignedHead signedHead = liveness.audit.AuditSeal.sign(chain, "s1", signer);
+
+        liveness.service.LivenessService.LivenessResult result =
+                new liveness.service.LivenessService.LivenessResult(
+                        liveness.flow.Verdict.PASS, att, "s1", 0, null, signedHead);
+
+        assertEquals(chain.latestHash(), result.auditHeadHash());
+        assertEquals(2, result.auditEntryCount());
+        assertEquals(chain.latestHash() + ":2", result.exportSealedHeadAndCount());
     }
 }

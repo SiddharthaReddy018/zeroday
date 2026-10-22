@@ -3,6 +3,7 @@ package liveness.evaluation;
 import liveness.capture.FrameFingerprint;
 import liveness.capture.FrameSequenceMonitor;
 import liveness.capture.RCaptureBindingVerifier;
+import liveness.policy.LivenessConfig;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -13,6 +14,9 @@ import java.util.Random;
  * <p>
  * Feeds simulated frames through {@link FrameSequenceMonitor} and {@link RCaptureBindingVerifier}
  * to measure real detection rates, bypass rates, and detection latency instead of hardcoded numbers.
+ * <p>
+ * All monitors are built from {@link LivenessConfig#defaultConfig()}, not hard-coded values.
+ * Results are synthetic, mechanism-level, not real-camera.
  */
 public final class IadMechanismRunner {
 
@@ -49,16 +53,19 @@ public final class IadMechanismRunner {
     }
 
     private void runFreezeTrials(IadMetrics metrics, int trials) {
+        LivenessConfig cfg = LivenessConfig.defaultConfig();
+        int window = cfg.frameFreezePHashWindowSize();
+        int freezeThreshold = cfg.freezeConsecutiveFrames();
+
         for (int t = 0; t < trials; t++) {
-            // Freeze threshold is 5 frames
-            FrameSequenceMonitor monitor = new FrameSequenceMonitor(15, 200, 5, FrameSequenceMonitor.LOOP_HAMMING_THRESHOLD, 5);
+            FrameSequenceMonitor monitor = new FrameSequenceMonitor(window, 200, cfg);
             byte[] identicalDigest = new byte[32];
             Arrays.fill(identicalDigest, (byte) (t + 1));
             long pHash = 0x12345678L + t;
             boolean detected = false;
             long startNs = System.nanoTime();
 
-            for (int f = 0; f < 8; f++) {
+            for (int f = 0; f < window; f++) {
                 FrameFingerprint fp = new FrameFingerprint(pHash, 1000L + f * 100L, f, 640, identicalDigest);
                 Optional<FrameSequenceMonitor.IntegrityViolation> violation = monitor.addFrame(fp);
                 if (violation.isPresent() && violation.get() == FrameSequenceMonitor.IntegrityViolation.FROZEN) {
@@ -72,15 +79,19 @@ public final class IadMechanismRunner {
     }
 
     private void runLoopTrials(IadMetrics metrics, int trials) {
+        LivenessConfig cfg = LivenessConfig.defaultConfig();
+        int window = cfg.frameFreezePHashWindowSize();
+        int K = cfg.loopSequenceLengthK();
+
         for (int t = 0; t < trials; t++) {
-            // K = 5, loop window size = 15
-            FrameSequenceMonitor monitor = new FrameSequenceMonitor(15, 200, 5, FrameSequenceMonitor.LOOP_HAMMING_THRESHOLD, 5);
-            int K = 5;
+            FrameSequenceMonitor monitor = new FrameSequenceMonitor(window, 200, cfg);
+            // Generate K hashes with enough inter-frame motion (bit distance > motionBits)
             long[] loopPhashes = new long[K];
             byte[][] loopDigests = new byte[K][32];
             for (int k = 0; k < K; k++) {
-                loopPhashes[k] = (0x100L * (k + 1)) ^ t;
-                Arrays.fill(loopDigests[k], (byte) (k + 10));
+                // Use widely-spaced hashes to ensure motion between consecutive frames
+                loopPhashes[k] = (0xFFFFL << (k * 8)) ^ ((long) t << 32);
+                Arrays.fill(loopDigests[k], (byte) (k + 10 + t));
             }
 
             boolean detected = false;
@@ -88,7 +99,7 @@ public final class IadMechanismRunner {
             int seq = 0;
             long timeMs = 1000L;
 
-            // 1. First segment (0..4)
+            // 1. First segment (0..K-1)
             for (int k = 0; k < K; k++) {
                 FrameFingerprint fp = new FrameFingerprint(loopPhashes[k], timeMs, seq++, 640, loopDigests[k]);
                 timeMs += 100L;
@@ -96,15 +107,18 @@ public final class IadMechanismRunner {
             }
 
             // 2. Intervening gap frame to satisfy non-adjacent gap >= 1 requirement
+            // Must differ from all segment hashes by > loopHammingThreshold
             byte[] gapDigest = new byte[32];
             Arrays.fill(gapDigest, (byte) 0xEE);
-            FrameFingerprint gapFrame = new FrameFingerprint(0xFFFFFFFFL, timeMs, seq++, 640, gapDigest);
+            FrameFingerprint gapFrame = new FrameFingerprint(0xAAAAAAAAAAAAAAAAL, timeMs, seq++, 640, gapDigest);
             timeMs += 100L;
             monitor.addFrame(gapFrame);
 
-            // 3. Replay segment (repeating 0..4)
+            // 3. Replay segment (repeating 0..K-1)
             for (int k = 0; k < K; k++) {
-                FrameFingerprint fp = new FrameFingerprint(loopPhashes[k], timeMs, seq++, 640, loopDigests[k]);
+                byte[] replayDigest = new byte[32];
+                rng.nextBytes(replayDigest); // fresh digest (different bytes)
+                FrameFingerprint fp = new FrameFingerprint(loopPhashes[k], timeMs, seq++, 640, replayDigest);
                 timeMs += 100L;
                 Optional<FrameSequenceMonitor.IntegrityViolation> violation = monitor.addFrame(fp);
                 if (violation.isPresent() && violation.get() == FrameSequenceMonitor.IntegrityViolation.LOOP_REPLAY) {
@@ -139,9 +153,12 @@ public final class IadMechanismRunner {
     }
 
     private void runLegitimateTrials(IadMetrics metrics, int trials) {
+        LivenessConfig cfg = LivenessConfig.defaultConfig();
+        int window = cfg.frameFreezePHashWindowSize();
         RCaptureBindingVerifier verifier = new RCaptureBindingVerifier();
+
         for (int t = 0; t < trials; t++) {
-            FrameSequenceMonitor monitor = new FrameSequenceMonitor(15, 200, 5, FrameSequenceMonitor.LOOP_HAMMING_THRESHOLD, 5);
+            FrameSequenceMonitor monitor = new FrameSequenceMonitor(window, 200, cfg);
             boolean falseAlarm = false;
 
             // Feed natural live frames with varying content and pHash

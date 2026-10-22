@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Configuration holder for the liveness system (§7).
+ * Configuration holder for the liveness system (Section 7).
  * <p>
  * All config keys use the namespace {@code mosip.registration.liveness.*}
  * or {@code mosip.face_authentication.liveness.*}. Defaults are provided
@@ -51,6 +51,7 @@ public final class LivenessConfig {
     private final int loopSequenceLengthK;
     private final int loopHammingThreshold;
     private final int freezeHammingThreshold;
+    private final int loopMinSegmentMotionBits;
     private final long rcaptureFreshnessWindowMs;
 
 
@@ -87,6 +88,7 @@ public final class LivenessConfig {
         this.loopSequenceLengthK = b.loopSequenceLengthK;
         this.loopHammingThreshold = b.loopHammingThreshold;
         this.freezeHammingThreshold = b.freezeHammingThreshold;
+        this.loopMinSegmentMotionBits = b.loopMinSegmentMotionBits;
         this.rcaptureFreshnessWindowMs = b.rcaptureFreshnessWindowMs;
         this.configVersion = b.configVersion;
         this.challengeProfile = b.challengeProfile;
@@ -115,10 +117,12 @@ public final class LivenessConfig {
     public double pitchLookThreshold() { return pitchLookThreshold; }
     public int minActionFrames() { return minActionFrames; }
     public int frameFreezePHashWindowSize() { return frameFreezePHashWindowSize; }
+    public int loopWindowFrames() { return frameFreezePHashWindowSize; }
     public int freezeConsecutiveFrames() { return freezeConsecutiveFrames; }
     public int loopSequenceLengthK() { return loopSequenceLengthK; }
     public int loopHammingThreshold() { return loopHammingThreshold; }
     public int freezeHammingThreshold() { return freezeHammingThreshold; }
+    public int loopMinSegmentMotionBits() { return loopMinSegmentMotionBits; }
     public long rcaptureFreshnessWindowMs() { return rcaptureFreshnessWindowMs; }
     public int configVersion() { return configVersion; }
     public String challengeProfile() { return challengeProfile; }
@@ -126,6 +130,11 @@ public final class LivenessConfig {
     /** Returns defaults for M1 testing. */
     public static LivenessConfig defaults() {
         return new Builder().build();
+    }
+
+    /** Alias for defaults(); used by tests and IAD runner to obtain production config. */
+    public static LivenessConfig defaultConfig() {
+        return defaults();
     }
 
     public static Builder builder() {
@@ -154,11 +163,12 @@ public final class LivenessConfig {
         private double yawLookThreshold = 10.0;
         private double pitchLookThreshold = 10.0;
         private int minActionFrames = 2;
-        private int frameFreezePHashWindowSize = 5;
+        private int frameFreezePHashWindowSize = 15;
         private int freezeConsecutiveFrames = 5;
         private int loopSequenceLengthK = 5;
         private int loopHammingThreshold = 6;
         private int freezeHammingThreshold = 2;
+        private int loopMinSegmentMotionBits = 3;
         private long rcaptureFreshnessWindowMs = 30000;
         private int configVersion = 1;
         private String challengeProfile = "DEFAULT";
@@ -186,17 +196,20 @@ public final class LivenessConfig {
         public Builder minActionFrames(int v)          { this.minActionFrames = v; return this; }
         public Builder frameFreezePHashWindowSize(int v) {
             this.frameFreezePHashWindowSize = v;
-            this.freezeConsecutiveFrames = v;
+            return this;
+        }
+        public Builder loopWindowFrames(int v) {
+            this.frameFreezePHashWindowSize = v;
             return this;
         }
         public Builder freezeConsecutiveFrames(int v) {
             this.freezeConsecutiveFrames = v;
-            this.frameFreezePHashWindowSize = v;
             return this;
         }
         public Builder loopSequenceLengthK(int v)      { this.loopSequenceLengthK = v; return this; }
         public Builder loopHammingThreshold(int v)     { this.loopHammingThreshold = v; return this; }
         public Builder freezeHammingThreshold(int v)   { this.freezeHammingThreshold = v; return this; }
+        public Builder loopMinSegmentMotionBits(int v)  { this.loopMinSegmentMotionBits = v; return this; }
         public Builder rcaptureFreshnessWindowMs(long v) { this.rcaptureFreshnessWindowMs = v; return this; }
         public Builder configVersion(int v)            { this.configVersion = v; return this; }
         public Builder challengeProfile(String v)      { this.challengeProfile = Objects.requireNonNull(v); return this; }
@@ -204,7 +217,7 @@ public final class LivenessConfig {
         /**
          * Validates invariants and builds the config.
          *
-         * @throws IllegalArgumentException if attackThreshold >= passThreshold (§5.1)
+         * @throws IllegalArgumentException if attackThreshold >= passThreshold (Section 5.1)
          */
         public LivenessConfig build() {
             if (attackThreshold < 0 || attackThreshold > 100) {
@@ -247,6 +260,19 @@ public final class LivenessConfig {
             }
             if (freezeHammingThreshold < 0 || freezeHammingThreshold > 64) {
                 throw new IllegalArgumentException("freezeHammingThreshold must be between 0 and 64, got: " + freezeHammingThreshold);
+            }
+            if (frameFreezePHashWindowSize < 2 * loopSequenceLengthK + 1) {
+                throw new IllegalArgumentException(
+                        "frameFreezePHashWindowSize (" + frameFreezePHashWindowSize
+                                + ") must be >= 2*loopSequenceLengthK+1 (" + (2 * loopSequenceLengthK + 1) + ")");
+            }
+            if (freezeConsecutiveFrames > frameFreezePHashWindowSize) {
+                throw new IllegalArgumentException(
+                        "freezeConsecutiveFrames (" + freezeConsecutiveFrames
+                                + ") must be <= frameFreezePHashWindowSize (" + frameFreezePHashWindowSize + ")");
+            }
+            if (loopMinSegmentMotionBits < 0 || loopMinSegmentMotionBits > 64) {
+                throw new IllegalArgumentException("loopMinSegmentMotionBits must be between 0 and 64, got: " + loopMinSegmentMotionBits);
             }
             return new LivenessConfig(this);
         }

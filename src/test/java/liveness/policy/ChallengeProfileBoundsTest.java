@@ -81,7 +81,7 @@ class ChallengeProfileBoundsTest {
 
         // These values are the same regardless of which profile is active
         for (ChallengeProfile profile : ChallengeProfile.values()) {
-            // The profile cannot override these values — they're not in the enum
+            // The profile cannot override these values -- they're not in the enum
             assertEquals(30, attack, "attackThreshold must remain constant across profiles");
             assertEquals(70, pass, "passThreshold must remain constant across profiles");
             assertEquals(3, persistence, "persistenceWindows must remain constant across profiles");
@@ -134,5 +134,69 @@ class ChallengeProfileBoundsTest {
 
         assertThrows(IllegalArgumentException.class, () ->
                 LivenessConfig.builder().minChallenges(5).maxChallenges(3).build());
+    }
+
+    // --- R1 acceptance tests ---
+
+    @Test
+    void configBuilderRejectsWindowSmallerThanTwoKPlusOne() {
+        // window = 10, K = 5 -> 10 < 2*5+1 (11) -> must throw
+        assertThrows(IllegalArgumentException.class, () ->
+                LivenessConfig.builder().frameFreezePHashWindowSize(10).loopSequenceLengthK(5).build());
+
+        // using loopWindowFrames setter alias
+        assertThrows(IllegalArgumentException.class, () ->
+                LivenessConfig.builder().loopWindowFrames(8).loopSequenceLengthK(5).build());
+    }
+
+    @Test
+    void configBuilderRejectsFreezeConsecutiveFramesExceedingWindow() {
+        // freezeConsecutiveFrames = 16, window = 15 -> must throw
+        assertThrows(IllegalArgumentException.class, () ->
+                LivenessConfig.builder().frameFreezePHashWindowSize(15).freezeConsecutiveFrames(16).build());
+    }
+
+    @Test
+    void configBuilderRejectsFreezeConsecutiveFramesLessThanTwo() {
+        assertThrows(IllegalArgumentException.class, () ->
+                LivenessConfig.builder().freezeConsecutiveFrames(1).build());
+    }
+
+    @Test
+    void configBuilderRejectsLoopSequenceLengthKLessThanFive() {
+        assertThrows(IllegalArgumentException.class, () ->
+                LivenessConfig.builder().loopSequenceLengthK(4).build());
+    }
+
+    @Test
+    void configBuilderRejectsInvalidLoopMinSegmentMotionBits() {
+        assertThrows(IllegalArgumentException.class, () ->
+                LivenessConfig.builder().loopMinSegmentMotionBits(-1).build());
+
+        assertThrows(IllegalArgumentException.class, () ->
+                LivenessConfig.builder().loopMinSegmentMotionBits(65).build());
+    }
+
+    @Test
+    void configBuilderDecoupledSettersTouchOnlyTheirOwnField() {
+        // Setting window must NOT set freezeConsecutiveFrames
+        LivenessConfig cfg1 = LivenessConfig.builder().frameFreezePHashWindowSize(20).build();
+        assertEquals(20, cfg1.frameFreezePHashWindowSize());
+        assertEquals(20, cfg1.loopWindowFrames());
+        assertEquals(5, cfg1.freezeConsecutiveFrames(), "freezeConsecutiveFrames must remain default 5");
+
+        // Setting freezeConsecutiveFrames must NOT set window
+        LivenessConfig cfg2 = LivenessConfig.builder().freezeConsecutiveFrames(8).build();
+        assertEquals(8, cfg2.freezeConsecutiveFrames());
+        assertEquals(15, cfg2.frameFreezePHashWindowSize(), "window must remain default 15");
+    }
+
+    @Test
+    void defaultConfigBuildsWithValidWindowAndK() {
+        LivenessConfig cfg = LivenessConfig.defaultConfig();
+        assertNotNull(cfg);
+        assertTrue(cfg.frameFreezePHashWindowSize() >= 2 * cfg.loopSequenceLengthK() + 1);
+        assertTrue(cfg.freezeConsecutiveFrames() <= cfg.frameFreezePHashWindowSize());
+        assertEquals(cfg.frameFreezePHashWindowSize(), cfg.loopWindowFrames());
     }
 }

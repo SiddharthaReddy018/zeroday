@@ -1,5 +1,6 @@
 package liveness.capture;
 
+import liveness.policy.LivenessConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assertions;
 import java.util.Optional;
@@ -35,14 +36,16 @@ public class FrameSequenceMonitorTest {
         Optional<FrameSequenceMonitor.IntegrityViolation> vSingle = monitor.addFrame(new FrameFingerprint(100L, 1090L, 4, 640));
         Assertions.assertFalse(vSingle.isPresent(), "A single close frame must not fire loop replay");
 
-        // Now test sequence repetition of K=5 frames with non-adjacent separation
+        // Now test sequence repetition of K=5 frames with non-adjacent separation.
+        // Use hashes with enough inter-frame motion, and an intervening frame
+        // that differs from all segment hashes by more than loopHammingThreshold (6).
         FrameSequenceMonitor seqMonitor = new FrameSequenceMonitor(20, 30);
-        long[] hashes = {100L, 200L, 300L, 400L, 500L};
+        long[] hashes = {0x00FFL, 0xFF00L, 0x0F0FL, 0xF0F0L, 0x5555L};
         for (int i = 0; i < 5; i++) {
             seqMonitor.addFrame(new FrameFingerprint(hashes[i], 1000L + i * 30L, i + 1, 640));
         }
-        // Intervening frame ensuring segments are non-adjacent
-        seqMonitor.addFrame(new FrameFingerprint(999L, 1150L, 6, 640));
+        // Intervening frame must be far from all segment hashes
+        seqMonitor.addFrame(new FrameFingerprint(0xAAAAAAAAAAAAAAAAL, 1150L, 6, 640));
         for (int i = 0; i < 4; i++) {
             seqMonitor.addFrame(new FrameFingerprint(hashes[i], 1180L + i * 30L, 7 + i, 640));
         }
@@ -141,7 +144,10 @@ public class FrameSequenceMonitorTest {
 
     @Test
     public void noisyLoopMustMatch() {
-        FrameSequenceMonitor monitor = new FrameSequenceMonitor(20, 30);
+        // Use a window large enough for loop detection: 2*K+1 = 11, use 20.
+        // Use production default config so loopMinSegmentMotionBits is applied.
+        LivenessConfig cfg = LivenessConfig.defaultConfig();
+        FrameSequenceMonitor monitor = new FrameSequenceMonitor(20, 30, cfg);
         int w = 64, h = 64;
 
         byte[][] frames = new byte[5][w * h];
@@ -157,9 +163,10 @@ public class FrameSequenceMonitorTest {
             monitor.addFrame(new FrameFingerprint(hash, 1000L + f * 30L, f + 1, w));
         }
 
-        // Intervening frame ensuring segments are non-adjacent
+        // Intervening frame: must differ from all segment frames by > loopHammingThreshold
+        // Use a fully inverted-pattern image to maximize distance
         byte[] intervening = new byte[w * h];
-        for (int i = 0; i < w * h; i++) intervening[i] = (byte) ((i * 3 + 77) % 256);
+        for (int i = 0; i < w * h; i++) intervening[i] = (byte) (255 - (frames[0][i] & 0xFF));
         long interHash = FrameFingerprint.computePHash(intervening, w, h);
         monitor.addFrame(new FrameFingerprint(interHash, 1150L, 6, w));
 

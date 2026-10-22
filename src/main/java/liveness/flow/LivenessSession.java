@@ -34,12 +34,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Session orchestrator for face liveness detection (§6).
+ * Session orchestrator for face liveness detection (Section 6).
  * <p>
  * Drives the {@link LivenessStateMachine}. <strong>No boolean flags.</strong>
  * All routing decisions derive from {@code machine.current()}.
  * <p>
- * Attestation is produced ONLY from {@code VERIFYING_FINAL → SUCCESS}.
+ * Attestation is produced ONLY from {@code VERIFYING_FINAL -> SUCCESS}.
  * Liveness-failed captures are NEVER saved.
  */
 public final class LivenessSession {
@@ -48,7 +48,7 @@ public final class LivenessSession {
     private final String subjectId;
     private final String sessionId;
 
-    // --- Components (§6 fields) ---
+    // --- Components (Section 6 fields) ---
     private final DeviceAdapter device;
     private final LivenessPolicy policy;
     private final LivenessConfig config;
@@ -66,7 +66,7 @@ public final class LivenessSession {
     private final SameFaceChecker sameFaceChecker;
     private final Signer signer;
 
-    // --- Session state (not boolean flags — data accumulators) ---
+    // --- Session state (not boolean flags -- data accumulators) ---
     private final String machineUserId;
     private final List<BoundChallenge> issuedChallenges;
     private final List<Attestation.ChallengeEcho> challengeEchoes;
@@ -147,7 +147,7 @@ public final class LivenessSession {
     }
 
     // =========================================================================
-    // Public API — all routing from machine.current(), no boolean flags
+    // Public API -- all routing from machine.current(), no boolean flags
     // =========================================================================
 
     /**
@@ -156,7 +156,7 @@ public final class LivenessSession {
      */
     public void setFaceEmbedder(FaceEmbedder embedder) { this.faceEmbedder = embedder; }
 
-    /** Starts the session: IDLE → DEVICE_CHECK. */
+    /** Starts the session: IDLE -> DEVICE_CHECK. */
     public LivenessState start() {
         LivenessState next = machine.fire(LivenessEvent.START_CAPTURE);
         audit.logTransition(LivenessState.IDLE, next, "START_CAPTURE");
@@ -164,7 +164,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Opens the device: DEVICE_CHECK → POSITIONING (or DEVICE_ERROR).
+     * Opens the device: DEVICE_CHECK -> POSITIONING (or DEVICE_ERROR).
      */
     public LivenessState openDevice() {
         try {
@@ -183,9 +183,9 @@ public final class LivenessSession {
     /**
      * Processes a single frame through the pipeline.
      * <p>
-     * Pipeline order per §3:
+     * Pipeline order per Section 3:
      * 1. Capture Integrity (IAD)
-     * 2. Quality Gate (raw frame, before crop — R3)
+     * 2. Quality Gate (raw frame, before crop -- R3)
      * 3. Spatial PAD (per-frame)
      * 4. Decision Engine (hard gates + fusion)
      *
@@ -217,7 +217,7 @@ public final class LivenessSession {
             return next;
         }
 
-        // --- 2. Quality Gate (raw frame, before crop — R3, §6.2) ---
+        // --- 2. Quality Gate (raw frame, before crop -- R3, Section 6.2) ---
         QualityGate.RawFrameData rawData = new QualityGate.RawFrameData(
                 frame.laplacianVariance(),
                 frame.brightnessMean(),
@@ -233,13 +233,13 @@ public final class LivenessSession {
         QualityGate.QualityResult qr = qualityGate.evaluate(rawData);
 
         if (!qr.passed()) {
-            // Quality failure → POSITIONING (guidance, not attack)
+            // Quality failure -> POSITIONING (guidance, not attack)
             if (current == LivenessState.PASSIVE) {
                 LivenessState next = machine.fire(LivenessEvent.QUALITY_DROPPED);
                 audit.logTransition(current, next, "QUALITY_DROPPED: " + qr.failureReason());
                 return next;
             }
-            // Already in POSITIONING — stay there
+            // Already in POSITIONING -- stay there
             return current;
         }
 
@@ -278,13 +278,13 @@ public final class LivenessSession {
                         return fireBandEvent(current, LivenessEvent.CLEAR_BONA_FIDE);
                     case UNCERTAIN:
                         if (result.reason() != null && result.reason().startsWith("Attack pending persistence")) {
-                            // Still accumulating windows for attack persistence — continue accumulating
+                            // Still accumulating windows for attack persistence -- continue accumulating
                             return current;
                         }
                         if (config.activeEnabled()) {
                             return fireBandEvent(current, LivenessEvent.UNCERTAIN);
                         }
-                        // Active disabled — UNCERTAIN must never pass without a completed challenge.
+                        // Active disabled -- UNCERTAIN must never pass without a completed challenge.
                         audit.logScore("PASSIVE_UNCERTAIN_REJECT", score, "Active disabled: UNCERTAIN cannot pass");
                         return fireBandEvent(current, LivenessEvent.ENGINE_ERROR);
                     case CLEAR_ATTACK:
@@ -292,7 +292,7 @@ public final class LivenessSession {
                             retryLimiter.recordBlockedAttack(sessionId, machineUserId);
                             return fireBandEvent(current, LivenessEvent.CLEAR_ATTACK);
                         }
-                        // Not yet persisted — continue accumulating
+                        // Not yet persisted -- continue accumulating
                         return current;
                     default:
                         return current;
@@ -304,7 +304,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Issues a challenge prompt: CHALLENGE_PROMPT → CHALLENGE_WAIT.
+     * Issues a challenge prompt: CHALLENGE_PROMPT -> CHALLENGE_WAIT.
      */
     public LivenessState issueChallenge() {
         actionHitFrames = 0;
@@ -321,7 +321,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Reports a challenge timeout: CHALLENGE_WAIT → RETRY_AVAILABLE.
+     * Reports a challenge timeout: CHALLENGE_WAIT -> RETRY_AVAILABLE.
      */
     public LivenessState challengeTimeout() {
         audit.logChallengeResult(currentChallenge != null ? currentChallenge.action() : "UNKNOWN",
@@ -333,7 +333,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Processes RCAPTURE result: FINAL_CAPTURE → VERIFYING_FINAL.
+     * Processes RCAPTURE result: FINAL_CAPTURE -> VERIFYING_FINAL.
      *
      * @param rcaptureImageBytes the captured image bytes
      * @param returnedTransactionId the transaction ID from the device
@@ -367,7 +367,7 @@ public final class LivenessSession {
                                          String returnedTransactionId,
                                          long rcaptureTimestamp,
                                          long requestTimestamp) {
-        // Row 16: FINAL_CAPTURE → VERIFYING_FINAL
+        // Row 16: FINAL_CAPTURE -> VERIFYING_FINAL
         LivenessState next = machine.fire(LivenessEvent.RCAPTURE_RETURNED);
         audit.logTransition(LivenessState.FINAL_CAPTURE, next, "RCAPTURE_RETURNED");
 
@@ -376,17 +376,17 @@ public final class LivenessSession {
                 returnedTransactionId, rcaptureTimestamp, requestTimestamp);
 
         if (!bindingOk) {
-            // Row 21: VERIFYING_FINAL → DEVICE_ERROR (INTEGRITY_FAILURE)
+            // Row 21: VERIFYING_FINAL -> DEVICE_ERROR (INTEGRITY_FAILURE)
             next = machine.fire(LivenessEvent.BINDING_FAILURE);
             audit.logTransition(LivenessState.VERIFYING_FINAL, next, "BINDING_FAILURE");
             retryLimiter.recordDeviceError(sessionId, machineUserId, RetryRateLimiter.DeviceErrorReason.INTEGRITY_FAILURE);
             return next;
         }
 
-        // Same-face check (§6.4)
+        // Same-face check (Section 6.4)
         boolean sameFaceOk = checkSameFace(rcaptureFrame);
         if (!sameFaceOk) {
-            // Row 19: VERIFYING_FINAL → RETRY_AVAILABLE
+            // Row 19: VERIFYING_FINAL -> RETRY_AVAILABLE
             next = machine.fire(LivenessEvent.SAME_FACE_FAIL);
             audit.logTransition(LivenessState.VERIFYING_FINAL, next, "SAME_FACE_FAIL");
             return next;
@@ -398,7 +398,7 @@ public final class LivenessSession {
         audit.logScore("FINAL_PAD", finalPadScore, finalBand.name());
 
         if (finalBand == LivenessPolicy.Band.CLEAR_ATTACK) {
-            // Row 20: VERIFYING_FINAL → BLOCKED_ATTACK
+            // Row 20: VERIFYING_FINAL -> BLOCKED_ATTACK
             next = machine.fire(LivenessEvent.FINAL_PAD_ATTACK);
             audit.logTransition(LivenessState.VERIFYING_FINAL, next, "FINAL_PAD_ATTACK");
             retryLimiter.recordBlockedAttack(sessionId, machineUserId);
@@ -413,8 +413,8 @@ public final class LivenessSession {
             return next;
         }
 
-        // All checks pass — commit
-        // Row 18: VERIFYING_FINAL → SUCCESS (only path that produces attestation)
+        // All checks pass -- commit
+        // Row 18: VERIFYING_FINAL -> SUCCESS (only path that produces attestation)
         String imageSha256 = Sha256.hex(Sha256.digest(rcaptureImageBytes)); // SHA-256 of the image (hex() alone only encodes)
         // The commit entry is logged BEFORE the transcript hash is taken so the signed hash covers it.
         audit.logTransition(LivenessState.VERIFYING_FINAL, LivenessState.SUCCESS, "COMMIT_CHECKS_PASS");
@@ -434,13 +434,14 @@ public final class LivenessSession {
 
         Attestation.PadResult padResult = new Attestation.PadResult(
                 attackDecision,
-                100 - finalPadScore,  // padDecisionScore = 100 - livenessScore (§6.5)
+                100 - finalPadScore,  // padDecisionScore = 100 - livenessScore (Section 6.5)
                 mechanisms,
                 Collections.unmodifiableList(challengeEchoes));
 
         Attestation built = Attestation.createFromSuccessSession(
                 subjectId, sessionId,
                 imageSha256, transcriptSha256,
+                transcriptSha256,  // auditHeadHash = real chain head (R4)
                 deviceTier, rcaptureTimestamp,
                 padScorer.modelVersion(),
                 config.configVersion(),
@@ -458,7 +459,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Reports RCAPTURE failure: FINAL_CAPTURE → DEVICE_ERROR.
+     * Reports RCAPTURE failure: FINAL_CAPTURE -> DEVICE_ERROR.
      */
     public LivenessState rcaptureFailure() {
         LivenessState next = machine.fire(LivenessEvent.RCAPTURE_FAILURE);
@@ -467,7 +468,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Attempts a retry: RETRY_AVAILABLE → PASSIVE or FAILED_MAX_RETRIES.
+     * Attempts a retry: RETRY_AVAILABLE -> PASSIVE or FAILED_MAX_RETRIES.
      */
     public LivenessState attemptRetry() {
         boolean allowed = retryLimiter.tryRetry(sessionId, machineUserId);
@@ -497,7 +498,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Reports a positioning timeout: POSITIONING → RETRY_AVAILABLE.
+     * Reports a positioning timeout: POSITIONING -> RETRY_AVAILABLE.
      */
     public LivenessState positioningTimeout() {
         LivenessState next = machine.fire(LivenessEvent.POSITIONING_TIMEOUT);
@@ -506,7 +507,7 @@ public final class LivenessSession {
     }
 
     // =========================================================================
-    // Getters — session state
+    // Getters -- session state
     // =========================================================================
 
     public String subjectId()            { return subjectId; }
@@ -621,7 +622,7 @@ public final class LivenessSession {
     }
 
     /**
-     * Processes a frame during CHALLENGE_WAIT — runs action detectors
+     * Processes a frame during CHALLENGE_WAIT -- runs action detectors
      * and PAD re-scoring simultaneously.
      */
     private LivenessState processFrameDuringChallenge(FaceFrame frame, int padScore) {
@@ -630,7 +631,7 @@ public final class LivenessSession {
         if (band == LivenessPolicy.Band.CLEAR_ATTACK) {
             decisionEngine.recordWindow(band);
             if (decisionEngine.isAttackPersisted()) {
-                // Row 15: CHALLENGE_WAIT → BLOCKED_ATTACK
+                // Row 15: CHALLENGE_WAIT -> BLOCKED_ATTACK
                 LivenessState next = machine.fire(LivenessEvent.CHALLENGE_PAD_FLAG);
                 audit.logTransition(LivenessState.CHALLENGE_WAIT, next,
                         "CHALLENGE_PAD_FLAG: score=" + padScore);
@@ -688,7 +689,7 @@ public final class LivenessSession {
 
     /**
      * Detects whether the subject performed the requested challenge action
-     * using landmark-based detectors (§20.1-20.2).
+     * using landmark-based detectors (Section 20.1-20.2).
      */
     /** Consecutive qualifying frames needed to confirm an action (HANDOFF-2 s5: blink needs several low-EAR frames). */
     private int requiredHitFrames(String action) {
@@ -717,7 +718,7 @@ public final class LivenessSession {
 
         switch (action) {
             case "BLINK":
-                // EAR threshold (§20.1, UNCALIBRATED seed via config)
+                // EAR threshold (Section 20.1, UNCALIBRATED seed via config)
                 double ear = LandmarkDetector.computeEAR(landmarks);
                 return LandmarkDetector.detectBlink(ear, config.earBlinkThreshold());
 

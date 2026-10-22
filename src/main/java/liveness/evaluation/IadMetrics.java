@@ -1,9 +1,9 @@
 package liveness.evaluation;
 
 /**
- * Injection Attack Detection metrics (§12.2, §24.2).
+ * Injection Attack Detection metrics (Section 12.2, Section 24.2).
  * <p>
- * Reported in a <b>separate table</b> from PAD metrics — these are
+ * Reported in a <b>separate table</b> from PAD metrics -- these are
  * detection rates, NOT APCER values.
  */
 public final class IadMetrics {
@@ -23,7 +23,7 @@ public final class IadMetrics {
         // all zeros
     }
 
-    // ── Recording ──────────────────────────────────────────────────────
+    // -- Recording ------------------------------------------------------
 
     public void recordFreezeAttempt(boolean detected) {
         freezeTotal++;
@@ -73,7 +73,7 @@ public final class IadMetrics {
         }
     }
 
-    // ── Rates ──────────────────────────────────────────────────────────
+    // -- Rates ----------------------------------------------------------
 
     /** Freeze detection rate: detected / total freeze attempts. */
     public double freezeDetectionRate() {
@@ -126,21 +126,22 @@ public final class IadMetrics {
         return (double) bypassed / attackTotal;
     }
 
-    // ── Report ─────────────────────────────────────────────────────────
+    // -- Report ---------------------------------------------------------
 
     /**
-     * Generates the IAD metrics table (separate from PAD per §12.2).
+     * Generates the IAD metrics table (separate from PAD per Section 12.2).
      */
     public String report() {
         StringBuilder sb = new StringBuilder();
         sb.append("## Injection Attack Detection Metrics (CEN/TS 18099 concepts)\n\n");
+        sb.append("> Results are synthetic, mechanism-level, not real-camera.\n\n");
         sb.append("| Attack Type | Attempts | Detected/Rejected | Rate |\n");
         sb.append("|---|---|---|---|\n");
         row(sb, "Freeze detection", freezeTotal, freezeDetected, freezeDetectionRate());
         row(sb, "Loop replay detection", loopTotal, loopDetected, loopDetectionRate());
         row(sb, "Nonce-swap rejection", nonceSwapTotal, nonceSwapRejected, nonceSwapRejectionRate());
         row(sb, "False IAD (legitimate)", legitimateTotal, legitimateFalseAlarms, falseIadRate());
-        sb.append("\n> These are detection rates, NOT APCER values (§12.2).\n");
+        sb.append("\n> These are detection rates, NOT APCER values (Section 12.2).\n");
         if (freezeTotal > 0 || loopTotal > 0 || nonceSwapTotal > 0) {
             sb.append("\n");
             sb.append(String.format("- **Mechanism coverage:** %.1f%%\n", mechanismCoverage() * 100.0));
@@ -161,7 +162,7 @@ public final class IadMetrics {
         }
     }
 
-    // ── Accessors for testing ──────────────────────────────────────────
+    // -- Accessors for testing ------------------------------------------
 
     public int freezeTotal()            { return freezeTotal; }
     public int freezeDetected()         { return freezeDetected; }
