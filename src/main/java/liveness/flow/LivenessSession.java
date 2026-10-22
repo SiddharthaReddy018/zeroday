@@ -708,46 +708,8 @@ public final class LivenessSession {
         }
         return null;
     }
-
     private boolean detectChallengeAction(FaceFrame frame, String action) {
-        double[] landmarks = frame.landmarks();
-        if (landmarks == null || landmarks.length < 12) {
-            return false;
-        }
-
-        switch (action) {
-            case "BLINK":
-                // EAR threshold (§20.1, UNCALIBRATED seed via config)
-                double ear = LandmarkDetector.computeEAR(landmarks);
-                return LandmarkDetector.detectBlink(ear, config.earBlinkThreshold());
-
-            case "SMILE":
-                if (landmarks.length >= 16) {
-                    double mar = LandmarkDetector.computeMAR(landmarks);
-                    return LandmarkDetector.detectSmile(mar, config.marSmileThreshold());
-                }
-                return false;
-
-            case "TURN_LEFT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawTurnThreshold(), "LEFT");
-
-            case "TURN_RIGHT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawTurnThreshold(), "RIGHT");
-
-            case "LOOK_LEFT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawLookThreshold(), "LEFT");
-
-            case "LOOK_RIGHT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawLookThreshold(), "RIGHT");
-
-            case "LOOK_UP":
-                return frame.pitchDeg() < -config.pitchLookThreshold();
-
-            case "LOOK_DOWN":
-                return frame.pitchDeg() > config.pitchLookThreshold();
-
-            default:
-                return false;
-        }
+        return liveness.engine.ChallengeActionDetector.detect(
+                action, frame.landmarks(), frame.yawDeg(), frame.pitchDeg(), config);
     }
 }
