@@ -125,15 +125,16 @@ public final class FaceFrame {
         this.landmarks = landmarks;
         this.pHash = pHash;
         this.encodedBytes = encodedBytes;
+        byte[] derived;
         if (contentDigest != null) {
-            this.contentDigest = java.util.Arrays.copyOf(contentDigest, contentDigest.length);
-        } else if (pixelData != null && widthPx >= 32 && heightPx >= 32 && pixelData.length >= widthPx * heightPx) {
-            this.contentDigest = liveness.capture.FrameFingerprint.computeContentDigest(pixelData, widthPx, heightPx);
-        } else if (pHash != 0L) {
-            this.contentDigest = java.nio.ByteBuffer.allocate(8).putLong(pHash).array();
+            derived = java.util.Arrays.copyOf(contentDigest, contentDigest.length);
         } else {
-            this.contentDigest = null;
+            derived = liveness.capture.FrameFingerprint.computeContentDigestFromPixels(pixelData, widthPx, heightPx);
+            if (derived == null && pHash != 0L) {
+                derived = java.nio.ByteBuffer.allocate(8).putLong(pHash).array();
+            }
         }
+        this.contentDigest = derived;
     }
 
 
