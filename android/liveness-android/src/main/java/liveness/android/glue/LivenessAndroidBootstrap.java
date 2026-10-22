@@ -66,7 +66,7 @@ public final class LivenessAndroidBootstrap {
         AndroidKeyStoreSigner signer = new AndroidKeyStoreSigner(keyAlias);
 
         // 2. Production Face Embedder (SFace 112x112)
-        SFaceEmbedder sfaceEmbedder = new SFaceEmbedder(sfaceModelBytes);
+        SFaceEmbedder sfaceEmbedder = new SFaceEmbedder(sfaceModelBytes, detector);
 
         // 3. Cryptographic trust verification of SBI JWT responses
         SbiJwtVerifier jwtVerifier = (sbiTrustAnchorCerts != null && !sbiTrustAnchorCerts.isEmpty())
