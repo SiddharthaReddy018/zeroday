@@ -68,7 +68,7 @@ public final class CrossStreamBinder {
         try {
             return normalizeToUtcEpochMs(Long.parseLong(trimmed));
         } catch (NumberFormatException nfe) {
-            return java.time.Instant.parse(trimmed).toEpochMilli();
+            return java.time.OffsetDateTime.parse(trimmed).toInstant().toEpochMilli();
         }
     }
 

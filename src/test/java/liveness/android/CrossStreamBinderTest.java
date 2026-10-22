@@ -28,12 +28,12 @@ public class CrossStreamBinderTest {
     @Test
     void parseUtcTimestampMsHandlesIsoAndEpoch() {
         String isoUtc = "2026-10-22T02:30:00Z";
-        long expectedMs = Instant.parse(isoUtc).toEpochMilli();
+        long expectedMs = java.time.OffsetDateTime.parse(isoUtc).toInstant().toEpochMilli();
 
         assertEquals(expectedMs, CrossStreamBinder.parseUtcTimestampMs(isoUtc));
 
         String isoOffset = "2026-10-22T08:00:00+05:30";
-        long expectedOffsetMs = Instant.parse(isoOffset).toEpochMilli();
+        long expectedOffsetMs = java.time.OffsetDateTime.parse(isoOffset).toInstant().toEpochMilli();
         assertEquals(expectedOffsetMs, CrossStreamBinder.parseUtcTimestampMs(isoOffset));
 
         assertEquals(expectedMs, CrossStreamBinder.parseUtcTimestampMs(String.valueOf(expectedMs)));
