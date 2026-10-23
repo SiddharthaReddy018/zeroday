@@ -47,6 +47,8 @@ public final class MainActivity extends Activity {
         addJob("Per-frame pipeline, lockstep: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
         addJob("Per-frame pipeline, paced 30 fps: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.PACED));
         addJob("PAD model only: FP32", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE.onnx"));
+        addJob("Per-frame pipeline, lockstep: FP32", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
+        addJob("Per-frame pipeline, paced 30 fps: FP32", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE.onnx", liveness.android.PipelineBenchmark.Mode.PACED));
     }
 
     private void addJob(String label, Callable<String> job) {

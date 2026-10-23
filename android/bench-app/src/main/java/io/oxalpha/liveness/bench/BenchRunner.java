@@ -55,7 +55,7 @@ final class BenchRunner {
         out.put("result", PipelineBenchmark.run(model.toPath(), new EcdsaSignerStub(), INERT_EMBEDDER, mode,
                 640, 480, 270, 30, PIPE_WARMUP, PIPE_FRAMES));
         out.put("after", DeviceInfo.dynamicInfo(ctx));
-        return save(ctx, "pipeline_" + mode.name().toLowerCase() + "_" + assetName.replace(".onnx", ""), out);
+        return save(ctx, "pipeline_" + mode.name().toLowerCase(java.util.Locale.ROOT) + "_" + assetName.replace(".onnx", ""), out);
     }
 
     static Map<String, Object> envelope(Context ctx, String what) {
