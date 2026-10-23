@@ -42,6 +42,8 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
     public static final String MODEL_SHA256 =
             "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4";
 
+    // Defaults copied from tools/calibrate_same_face.py's existing FaceDetectorYN.create
+    // call. They are reference parameters, not thresholds tuned to these decoder tests.
     static final double SCORE_THRESHOLD = 0.6;
     static final double NMS_THRESHOLD = 0.3;
     static final int TOP_K = 5000;
@@ -184,12 +186,6 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         return top * (1.0 - fy) + bottom * fy;
     }
 
-    /** Remove only sub-0.0001-pixel floating-point noise around integral coordinates. */
-    private static double snapNearInteger(double value) {
-        double nearest = Math.rint(value);
-        return Math.abs(value - nearest) <= 1e-4 ? nearest : value;
-    }
-
     private static double clamp(double value, double low, double high) {
         return Math.max(low, Math.min(high, value));
     }
@@ -235,23 +231,26 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
                     if (!Float.isFinite(clsScore) || !Float.isFinite(objScore)) continue;
                     clsScore = Math.max(0.0f, Math.min(1.0f, clsScore));
                     objScore = Math.max(0.0f, Math.min(1.0f, objScore));
-                    double score = Math.sqrt(clsScore * objScore);
+                    // Match OpenCV FaceDetectorYN's FP32 decode arithmetic. These are
+                    // FP32 model outputs; promoting bbox values to double before exp/box
+                    // arithmetic can move an integral edge below the boundary before floor().
+                    float score = (float) Math.sqrt(clsScore * objScore);
                     if (score < SCORE_THRESHOLD) continue;
 
                     float[] box = row(bbox[level], index, 4, "bbox");
                     float[] points = row(kps[level], index, 10, "kps");
-                    double cx = (col + box[0]) * stride;
-                    double cy = (row + box[1]) * stride;
-                    double bw = Math.exp(box[2]) * stride;
-                    double bh = Math.exp(box[3]) * stride;
-                    if (!Double.isFinite(cx) || !Double.isFinite(cy)
-                            || !Double.isFinite(bw) || !Double.isFinite(bh) || bw <= 0.0 || bh <= 0.0) {
+                    float cx = (col + box[0]) * stride;
+                    float cy = (row + box[1]) * stride;
+                    float bw = (float) Math.exp(box[2]) * stride;
+                    float bh = (float) Math.exp(box[3]) * stride;
+                    if (!Float.isFinite(cx) || !Float.isFinite(cy)
+                            || !Float.isFinite(bw) || !Float.isFinite(bh) || bw <= 0.0f || bh <= 0.0f) {
                         continue;
                     }
-                    double x = cx - bw / 2.0;
-                    double y = cy - bh / 2.0;
-                    double rawRight = x + bw;
-                    double rawBottom = y + bh;
+                    float x = cx - bw / 2.0f;
+                    float y = cy - bh / 2.0f;
+                    float rawRight = x + bw;
+                    float rawBottom = y + bh;
                     if (!Double.isFinite(x) || !Double.isFinite(y)
                             || !Double.isFinite(rawRight) || !Double.isFinite(rawBottom)) continue;
 
@@ -302,14 +301,12 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         if (kept.isEmpty()) return Observation.NONE;
 
         Candidate best = kept.get(0);
-        // Float32 model outputs can put a mathematically integral edge a few ulps
-        // either side of the integer. Snap only extremely-near edges before floor/ceil,
-        // so numerical noise does not expand a box by one pixel; true fractional edges
-        // still round outward and conservatively enclose the face.
-        int left = (int) Math.floor(snapNearInteger(best.x));
-        int top = (int) Math.floor(snapNearInteger(best.y));
-        int right = (int) Math.ceil(snapNearInteger(best.x + best.w));
-        int bottom = (int) Math.ceil(snapNearInteger(best.y + best.h));
+        // FaceDetector.Observation stores integer boxes. Round outward so the integer
+        // rectangle encloses the decoded FP32 box instead of shrinking it.
+        int left = (int) Math.floor(best.x);
+        int top = (int) Math.floor(best.y);
+        int right = (int) Math.ceil(best.x + best.w);
+        int bottom = (int) Math.ceil(best.y + best.h);
         double[] landmarks = new double[LandmarkLayout.FULL_LENGTH];
         Arrays.fill(landmarks, Double.NaN);
         System.arraycopy(best.alignment, 0, landmarks, LandmarkLayout.ALIGN5, best.alignment.length);
