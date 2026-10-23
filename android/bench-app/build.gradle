@@ -1,0 +1,48 @@
+// Standalone on-phone benchmark app (P4/P5, AUDIT_TODO X6). Deliberately independent of :liveness-android, which
+// cannot build yet (Flutter embedding hash placeholder, X4). It compiles the shared pure-Java engine sources
+// directly, so the phone runs the same classes the desktop tests run.
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.oxalpha.liveness.bench'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.oxalpha.liveness.bench'
+        minSdk 28
+        targetSdk 31
+        versionCode 1
+        versionName '1'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs += ['../../src/main/java']
+            java.exclude 'liveness/evaluation/**'
+            java.exclude 'liveness/device/MdsHttpDeviceAdapter.java'
+            java.exclude 'liveness/device/MdsStreamReader.java'
+            java.exclude 'liveness/android/glue/**'
+        }
+    }
+
+    androidResources { noCompress 'onnx' }
+
+    buildTypes {
+        // Benchmark the build that resembles shipping: not debuggable, no profiler overhead.
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug   // local benchmarking only; never distribute
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.16.3'
+}

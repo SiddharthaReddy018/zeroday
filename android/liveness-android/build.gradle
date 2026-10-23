@@ -1,7 +1,7 @@
 // MOSIP Face Liveness + PAD - Android library module (M4).
 // Not built by the Maven project. Requires AGP 8.x, Gradle 8.x, JDK 17 to run Gradle (sources stay Java 11).
 plugins {
-    id 'com.android.library' version '8.2.2'
+    id 'com.android.library'
 }
 
 android {

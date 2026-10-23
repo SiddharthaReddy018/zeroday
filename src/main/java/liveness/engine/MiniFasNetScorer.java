@@ -22,6 +22,13 @@ import java.util.Collections;
  */
 public final class MiniFasNetScorer implements AutoCloseable {
 
+    /**
+     * What the session options set in the constructor actually are. Benchmark reports quote this string so a latency
+     * number is always tied to the configuration that produced it (no NNAPI/XNNPACK, no thread tuning here).
+     * Keep it in sync with the SessionOptions below.
+     */
+    public static final String RUNTIME_DESCRIPTION = "ORT CPU execution provider, BASIC_OPT, default intra-op threads";
+
     private final boolean isStubMode;
     private int stubScore = 80;
     private final int[] inputShape = new int[]{1, 3, 128, 128};
@@ -100,6 +107,31 @@ public final class MiniFasNetScorer implements AutoCloseable {
             return stubScore;
         }
 
+        float[] logits = rawLogits(preprocessedInput);
+        // ModelQualificationTest (§3.1): Class 0 = live (bona fide), Class 1 = spoof (attack)
+        float liveLogit = logits[0];
+        float spoofLogit = logits[1];
+
+        // Softmax probability for live class
+        float maxLogit = Math.max(liveLogit, spoofLogit);
+        float expLive = (float) Math.exp(liveLogit - maxLogit);
+        float expSpoof = (float) Math.exp(spoofLogit - maxLogit);
+        float liveProb = expLive / (expLive + expSpoof);
+
+        return Math.round(liveProb * 100.0f);
+    }
+
+    /**
+     * Raw model output {liveLogit, spoofLogit} for one preprocessed crop (same input contract as
+     * {@link #score(float[])}). Exists so a device's output can be compared with the desktop's for the same model
+     * file and the same input (AUDIT_TODO X2); the product decision path still goes through {@link #score}.
+     *
+     * @throws IllegalStateException in stub mode (a stub has no model output)
+     */
+    public float[] rawLogits(float[] preprocessedInput) {
+        if (isStubMode) {
+            throw new IllegalStateException("stub scorer has no logits");
+        }
         if (preprocessedInput == null || preprocessedInput.length != 3 * 128 * 128) {
             throw new IllegalArgumentException("PAD input must be 3x128x128 floats (49152), got "
                     + (preprocessedInput == null ? "null" : String.valueOf(preprocessedInput.length)));
@@ -111,17 +143,7 @@ public final class MiniFasNetScorer implements AutoCloseable {
                  OrtSession.Result result = session.run(Collections.singletonMap(inputName, inputTensor))) {
 
                 float[][] logits = (float[][]) result.get(0).getValue();
-                // ModelQualificationTest (§3.1): Class 0 = live (bona fide), Class 1 = spoof (attack)
-                float liveLogit = logits[0][0];
-                float spoofLogit = logits[0][1];
-
-                // Softmax probability for live class
-                float maxLogit = Math.max(liveLogit, spoofLogit);
-                float expLive = (float) Math.exp(liveLogit - maxLogit);
-                float expSpoof = (float) Math.exp(spoofLogit - maxLogit);
-                float liveProb = expLive / (expLive + expSpoof);
-
-                return Math.round(liveProb * 100.0f);
+                return new float[]{logits[0][0], logits[0][1]};
             }
         } catch (OrtException e) {
             throw new RuntimeException("ONNX inference failed", e);
