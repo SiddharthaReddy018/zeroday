@@ -106,12 +106,20 @@ public final class CameraXDeviceAdapter implements DeviceAdapter {
         if (!open.get()) throw new DeviceException("camerax: closed while waiting");
         if (f == null) throw new DeviceException("camerax: no frame within " + frameTimeoutMs + " ms");
 
+        final long tCapture = StageTimer.start();
+        StageTimer.record(StageTimer.Stage.QUEUE_AGE, System.nanoTime() - f.arrivalNanos);
         try {
+            long t = StageTimer.start();
             byte[] rgb = YuvConverter.toRgb(f);
+            StageTimer.stop(StageTimer.Stage.YUV_TO_RGB, t);
             int w = YuvConverter.outputWidth(f);
             int h = YuvConverter.outputHeight(f);
+            t = StageTimer.start();
             double[] luma = lumaStats(f);
+            StageTimer.stop(StageTimer.Stage.LUMA_STATS, t);
+            t = StageTimer.start();
             FaceDetector.Observation o = detector.detect(rgb, w, h);
+            StageTimer.stop(StageTimer.Stage.DETECT, t);
             if (o == null) o = FaceDetector.Observation.NONE;
 
             FrameQuality q = o.faceCount == 1 ? FrameQuality.GOOD
@@ -119,14 +127,20 @@ public final class CameraXDeviceAdapter implements DeviceAdapter {
                     luma[0], luma[1], 0.0, 0.0, Math.max(o.bboxW, o.bboxH),
                     o.yawDeg, o.pitchDeg, o.rollDeg, o.faceCount);
 
+            t = StageTimer.start();
+            long pHash = perceptualHash(f);
+            StageTimer.stop(StageTimer.Stage.PHASH, t);
+            t = StageTimer.start();
             FaceFrame out = new FaceFrame(
                     q, "camerax:" + cameraId, cameraId.hashCode(),
                     f.timestampMs, sequence.incrementAndGet(),
                     w, h, rgb,
                     o.bboxX, o.bboxY, o.bboxW, o.bboxH,
                     o.yawDeg, o.pitchDeg, o.rollDeg, o.faceCount,
-                    luma[0], luma[1], o.landmarks, perceptualHash(f));
+                    luma[0], luma[1], o.landmarks, pHash);
+            StageTimer.stop(StageTimer.Stage.FACE_FRAME, t);
             latest = out;
+            StageTimer.stop(StageTimer.Stage.CAPTURE_TOTAL, tCapture);
             return out;
         } catch (RuntimeException e) {
             throw new DeviceException("camerax: frame conversion failed: " + e.getMessage(), e);

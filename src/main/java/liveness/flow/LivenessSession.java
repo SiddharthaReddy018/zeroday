@@ -193,9 +193,19 @@ public final class LivenessSession {
      * @return the resulting state
      */
     public LivenessState processFrame(FaceFrame frame) {
+        final long tProcess = liveness.android.StageTimer.start();
+        try {
+            return processFrameImpl(frame);
+        } finally {
+            liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.PROCESS_TOTAL, tProcess);
+        }
+    }
+
+    private LivenessState processFrameImpl(FaceFrame frame) {
         LivenessState current = machine.current();
 
         // --- 1. Capture Integrity Check ---
+        final long tIntegrity = liveness.android.StageTimer.start();
         FrameFingerprint fp = new FrameFingerprint(
                 frame.pHash(),  // computed by the DeviceAdapter from raw pixels (0 if not available)
                 frame.timestampMs(),
@@ -208,6 +218,7 @@ public final class LivenessSession {
                 fp,
                 String.valueOf(frame.deviceId()),
                 frame.signature());
+        liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.INTEGRITY, tIntegrity);
 
         if (integrityViolation.isPresent()) {
             audit.logScore("INTEGRITY", 0, integrityViolation.get());
@@ -230,7 +241,9 @@ public final class LivenessSession {
                 frame.widthPx(),
                 frame.heightPx());
 
+        final long tQuality = liveness.android.StageTimer.start();
         QualityGate.QualityResult qr = qualityGate.evaluate(rawData);
+        liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.QUALITY, tQuality);
 
         if (!qr.passed()) {
             // Quality failure → POSITIONING (guidance, not attack)
@@ -579,10 +592,15 @@ public final class LivenessSession {
             return 0;
         }
         try {
+            long t = liveness.android.StageTimer.start();
             float[] in = liveness.engine.PadPreprocessor.prepare(
                     frame.pixelData(), frame.widthPx(), frame.heightPx(),
                     frame.faceBboxX(), frame.faceBboxY(), frame.faceBboxWidth(), frame.faceBboxHeight());
-            return padScorer.score(in);
+            liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.PREPROCESS, t);
+            t = liveness.android.StageTimer.start();
+            int padScoreTimed = padScorer.score(in);
+            liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.PAD_INFER, t);
+            return padScoreTimed;
         } catch (IllegalArgumentException e) {
             audit.logScore("PAD", 0, "UNSCORABLE: " + e.getMessage());
             return 0;

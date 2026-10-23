@@ -16,6 +16,8 @@ public final class YuvFrame {
     public final int uvPixelStride;
     public final int rotationDegrees;
     public final long timestampMs;
+    /** {@link System#nanoTime()} when this snapshot was created (producer side); used only to measure queue age. */
+    public final long arrivalNanos = System.nanoTime();
 
     public YuvFrame(int width, int height, byte[] y, byte[] u, byte[] v,
                     int yRowStride, int uvRowStride, int uvPixelStride,

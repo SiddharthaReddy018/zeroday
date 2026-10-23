@@ -12,7 +12,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import liveness.android.MiniJson;
+import liveness.android.FaceEmbedder;
 import liveness.android.PadBenchmark;
+import liveness.android.PipelineBenchmark;
+import liveness.crypto.EcdsaSignerStub;
 
 /** Runs benchmarks off the UI thread's responsibility (caller supplies the thread), saves JSON, logs to logcat. */
 final class BenchRunner {
@@ -29,6 +32,25 @@ final class BenchRunner {
         out.put("result", PadBenchmark.run(model.toPath(), PAD_WARMUP, PAD_ITERATIONS));
         out.put("after", DeviceInfo.dynamicInfo(ctx));
         return save(ctx, "pad_" + assetName.replace(".onnx", ""), out);
+    }
+
+    static final int PIPE_WARMUP = 60;
+    static final int PIPE_FRAMES = 400;
+
+    /** Embedder/signer are inert placeholders: neither runs per frame, and the report says SFace/signing are not measured. */
+    private static final FaceEmbedder INERT_EMBEDDER = new FaceEmbedder() {
+        @Override public float[] embed(byte[] rgb, int w, int h) { return new float[128]; }
+        @Override public boolean productionGrade() { return true; }
+    };
+
+    static String runPipeline(Context ctx, String assetName, PipelineBenchmark.Mode mode) throws Exception {
+        File model = copyAsset(ctx, assetName);
+        Map<String, Object> out = envelope(ctx, "pipeline_" + mode + ":" + assetName);
+        out.put("before", DeviceInfo.dynamicInfo(ctx));
+        out.put("result", PipelineBenchmark.run(model.toPath(), new EcdsaSignerStub(), INERT_EMBEDDER, mode,
+                640, 480, 270, 30, PIPE_WARMUP, PIPE_FRAMES));
+        out.put("after", DeviceInfo.dynamicInfo(ctx));
+        return save(ctx, "pipeline_" + mode.name().toLowerCase() + "_" + assetName.replace(".onnx", ""), out);
     }
 
     static Map<String, Object> envelope(Context ctx, String what) {
