@@ -15,6 +15,7 @@ import liveness.android.MiniJson;
 import liveness.android.FaceEmbedder;
 import liveness.android.PadBenchmark;
 import liveness.android.PipelineBenchmark;
+import liveness.android.YuNetDetectorBenchmark;
 import liveness.crypto.EcdsaSignerStub;
 
 /** Runs benchmarks off the UI thread's responsibility (caller supplies the thread), saves JSON, logs to logcat. */
@@ -36,6 +37,16 @@ final class BenchRunner {
 
     static final int PIPE_WARMUP = 60;
     static final int PIPE_FRAMES = 400;
+
+    static String runYuNetDetector(Context ctx) throws Exception {
+        File model = copyAsset(ctx, "face_detection_yunet.onnx");
+        Map<String, Object> out = envelope(ctx, "yunet_detector_only");
+        out.put("before", DeviceInfo.dynamicInfo(ctx));
+        out.put("result", YuNetDetectorBenchmark.run(model.toPath(), 640, 480, PIPE_WARMUP, PIPE_FRAMES));
+        out.put("after", DeviceInfo.dynamicInfo(ctx));
+        return save(ctx, "yunet_detector", out);
+    }
+
 
     /**
      * Embedder/signer are inert placeholders: neither runs per frame, and the report says SFace/signing are not

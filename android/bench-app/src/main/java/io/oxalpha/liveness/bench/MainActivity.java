@@ -43,6 +43,7 @@ public final class MainActivity extends Activity {
         root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
         setContentView(root);
 
+        addJob("YuNet detector only: ORT CPU", () -> BenchRunner.runYuNetDetector(this));
         addJob("PAD model only: INT8", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("Per-frame pipeline, lockstep: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
         addJob("Per-frame pipeline, paced 30 fps: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.PACED));
