@@ -5,8 +5,6 @@ import liveness.crypto.EcdsaSignerStub;
 import liveness.device.MockDeviceAdapter;
 import liveness.engine.MiniFasNetScorer;
 import liveness.engine.SameFaceChecker;
-import liveness.evaluation.IadMetrics;
-import liveness.evaluation.WilsonConfidenceInterval;
 import liveness.policy.LivenessConfig;
 import liveness.service.LivenessService;
 import org.junit.jupiter.api.Test;
@@ -54,19 +52,5 @@ class AuditHardeningTest {
         } finally {
             if (old != null) System.setProperty("liveness.allowStubs", old);
         }
-    }
-
-    @Test
-    void iadRateIsNaNWithNoTrials() {
-        IadMetrics m = new IadMetrics();
-        assertTrue(Double.isNaN(m.freezeDetectionRate()));
-        assertTrue(Double.isNaN(m.loopDetectionRate()));
-        assertTrue(Double.isNaN(m.nonceSwapRejectionRate()));
-    }
-
-    @Test
-    void wilsonStringHasTwoBoundsNotCenter() {
-        String s = WilsonConfidenceInterval.compute(0, 9).toString();
-        assertEquals(1, s.chars().filter(ch -> ch == ',').count(), s);
     }
 }

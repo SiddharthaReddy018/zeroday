@@ -1,4 +1,4 @@
-package liveness.device;
+package liveness.desktop;
 
 import liveness.android.IsoFaceRgbDecoder;
 import liveness.android.MiniJson;
@@ -6,6 +6,9 @@ import liveness.android.SbiIntentDeviceAdapter;
 import liveness.android.SbiJwtVerifier;
 import liveness.core.FaceFrame;
 import liveness.core.FrameQuality;
+import liveness.device.DeviceAdapter;
+import liveness.device.DeviceException;
+import liveness.device.MdsDeviceInfo;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;

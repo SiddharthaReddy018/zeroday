@@ -1,4 +1,4 @@
-package liveness.device;
+package liveness.desktop;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -7,6 +7,7 @@ import liveness.android.MiniJson;
 import liveness.android.SbiIntentDeviceAdapter;
 import liveness.android.SbiJwtVerifier;
 import liveness.core.FaceFrame;
+import liveness.device.DeviceException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
