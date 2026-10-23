@@ -1,5 +1,7 @@
 package liveness.evaluation;
 
+import java.util.Locale;
+
 /**
  * Computes the Wilson score interval for binomial proportions (§12.3).
  * <p>
@@ -74,7 +76,7 @@ public final class WilsonConfidenceInterval {
 
         @Override
         public String toString() {
-            return String.format("[%.4f, %.4f]", lower, upper);   // point estimate is reported separately; center is not the estimate
+            return String.format(Locale.ROOT, "[%.4f, %.4f]", lower, upper);   // point estimate is reported separately; center is not the estimate
         }
     }
 }
