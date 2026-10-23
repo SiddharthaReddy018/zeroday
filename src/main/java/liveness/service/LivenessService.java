@@ -79,8 +79,39 @@ public final class LivenessService {
                 throw new IllegalStateException("LivenessService refusing to start outside dev without a production FaceEmbedder (e.g. SFaceEmbedder)");
             }
         }
+        return openSession(subjectId, device, machineUserId, workflow, faceEmbedder);
+    }
 
+    /**
+     * Benchmark-only entry point (latency measurement of the capture and PAD path on a device).
+     * <p>
+     * It skips ONLY the production-embedder guard of {@link #startSession}: a phone cannot set
+     * {@code -Dliveness.allowStubs}, and the benchmark never measures same-face. In exchange, the session it
+     * returns is given a {@link #BENCHMARK_ONLY_EMBEDDER} that always throws, so the same-face step fails
+     * closed and such a session can never reach a PASS verdict, whatever embedder was set on this service.
+     * Every other check (rate limit, stub scorer/checker policy, capture integrity) is unchanged.
+     * Never use this for real verification; use {@link #startSession}.
+     */
+    public LivenessSession startBenchmarkSession(String subjectId,
+                                                 DeviceAdapter device,
+                                                 String machineUserId,
+                                                 WorkflowType workflow) {
+        return openSession(subjectId, device, machineUserId, workflow, BENCHMARK_ONLY_EMBEDDER);
+    }
 
+    /** Always throws, so same-face fails closed. Not production grade. Used only by {@link #startBenchmarkSession}. */
+    static final liveness.android.FaceEmbedder BENCHMARK_ONLY_EMBEDDER = new liveness.android.FaceEmbedder() {
+        @Override
+        public float[] embed(byte[] rgb, int width, int height) {
+            throw new UnsupportedOperationException("benchmark-only session: same-face is intentionally unavailable");
+        }
+    };
+
+    private LivenessSession openSession(String subjectId,
+                                        DeviceAdapter device,
+                                        String machineUserId,
+                                        WorkflowType workflow,
+                                        liveness.android.FaceEmbedder embedder) {
         if (retryLimiter.isLocked(machineUserId)) {
             throw new IllegalStateException("LOCKED: machine+user rate limit exceeded for " + machineUserId);
         }
@@ -94,7 +125,7 @@ public final class LivenessService {
                 challengeGen, retryLimiter, captureIntegrity,
                 signer, supervisor, machineUserId);
         session.setCaptureMode(device.captureMode());
-        session.setFaceEmbedder(faceEmbedder);
+        session.setFaceEmbedder(embedder);
         return session;
     }
 

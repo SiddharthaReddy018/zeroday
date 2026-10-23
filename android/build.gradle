@@ -1,0 +1,6 @@
+// Root build for the Android modules. Plugin versions are declared here once (apply false) so the library
+// module and the bench app share one AGP. Requires JDK 17 to run Gradle and Android SDK platform 34.
+plugins {
+    id 'com.android.library' version '8.2.2' apply false
+    id 'com.android.application' version '8.2.2' apply false
+}

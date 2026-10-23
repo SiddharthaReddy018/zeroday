@@ -89,7 +89,7 @@ public class SbiCaptureFinalIntegrationTest {
         byte[] isoJpeg = createSyntheticIsoJpegFixture(fixtureW, fixtureH);
 
         // Real IsoFaceRgbDecoder with desktop ImageIO JPEG decoding
-        IsoFaceRgbDecoder realDecoder = new IsoFaceRgbDecoder(IsoFaceRgbDecoder.desktopJpegDecoder(), null);
+        IsoFaceRgbDecoder realDecoder = new IsoFaceRgbDecoder(liveness.desktop.DesktopJpegDecoder.create(), null);
         SbiIntentDeviceAdapter.RgbDecoder.Decoded decodedDirect = realDecoder.decode(isoJpeg);
         assertNotNull(decodedDirect);
         assertEquals(fixtureW, decodedDirect.width);
@@ -214,7 +214,7 @@ public class SbiCaptureFinalIntegrationTest {
         int fixtureW = 64;
         int fixtureH = 64;
         byte[] isoJpeg = createSyntheticIsoJpegFixture(fixtureW, fixtureH);
-        IsoFaceRgbDecoder realDecoder = new IsoFaceRgbDecoder(IsoFaceRgbDecoder.desktopJpegDecoder(), null);
+        IsoFaceRgbDecoder realDecoder = new IsoFaceRgbDecoder(liveness.desktop.DesktopJpegDecoder.create(), null);
         SbiIntentDeviceAdapter.RgbDecoder.Decoded decoded = realDecoder.decode(isoJpeg);
 
         FaceEmbedder deterministicEmbedder = (rgb, w, h) -> new float[]{1.0f, 0.0f, 0.0f};

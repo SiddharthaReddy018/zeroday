@@ -156,5 +156,43 @@ public class FrameFingerprint {
             throw new RuntimeException("SHA-256 message digest unavailable", e);
         }
     }
+
+    /**
+     * Content digest for a frame buffer of unknown pixel format.
+     * <ul>
+     *   <li>length &gt;= w*h*3: interleaved RGB. Luma (BT.601 integer) is computed at the same
+     *       32x32 nearest-neighbour sample points as the gray path, over the WHOLE frame.</li>
+     *   <li>length &gt;= w*h: treated as 8-bit gray; identical to {@link #computeContentDigest}.</li>
+     *   <li>otherwise (or too small a frame): null, so the caller can fall back to another digest.</li>
+     * </ul>
+     * Previously an RGB buffer was read as gray, so only the top third of the frame was digested.
+     */
+    public static byte[] computeContentDigestFromPixels(byte[] pixels, int width, int height) {
+        if (pixels == null || width < 32 || height < 32) return null;
+        long n = (long) width * height;
+        if (pixels.length >= n * 3) {
+            byte[] ds = new byte[32 * 32];
+            double xRatio = width / 32.0;
+            double yRatio = height / 32.0;
+            for (int y = 0; y < 32; y++) {
+                int py = Math.min(height - 1, (int) (y * yRatio));
+                for (int x = 0; x < 32; x++) {
+                    int px = Math.min(width - 1, (int) (x * xRatio));
+                    int o = (py * width + px) * 3;
+                    int r = pixels[o] & 0xFF, g = pixels[o + 1] & 0xFF, b = pixels[o + 2] & 0xFF;
+                    ds[y * 32 + x] = (byte) ((77 * r + 150 * g + 29 * b) >> 8);
+                }
+            }
+            try {
+                return MessageDigest.getInstance("SHA-256").digest(ds);
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException("SHA-256 message digest unavailable", e);
+            }
+        }
+        if (pixels.length >= n) {
+            return computeContentDigest(pixels, width, height);
+        }
+        return null;
+    }
 }
 

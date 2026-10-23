@@ -195,9 +195,19 @@ public final class LivenessSession {
      * @return the resulting state
      */
     public LivenessState processFrame(FaceFrame frame) {
+        final long tProcess = liveness.android.StageTimer.start();
+        try {
+            return processFrameImpl(frame);
+        } finally {
+            liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.PROCESS_TOTAL, tProcess);
+        }
+    }
+
+    private LivenessState processFrameImpl(FaceFrame frame) {
         LivenessState current = machine.current();
 
         // --- 1. Capture Integrity Check ---
+        final long tIntegrity = liveness.android.StageTimer.start();
         FrameFingerprint fp = new FrameFingerprint(
                 frame.pHash(),  // computed by the DeviceAdapter from raw pixels (0 if not available)
                 frame.timestampMs(),
@@ -210,6 +220,7 @@ public final class LivenessSession {
                 fp,
                 String.valueOf(frame.deviceId()),
                 frame.signature());
+        liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.INTEGRITY, tIntegrity);
 
         if (integrityViolation.isPresent()
                 && "LOOP_REPLAY".equals(integrityViolation.get())
@@ -242,7 +253,9 @@ public final class LivenessSession {
                 frame.widthPx(),
                 frame.heightPx());
 
+        final long tQuality = liveness.android.StageTimer.start();
         QualityGate.QualityResult qr = qualityGate.evaluate(rawData);
+        liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.QUALITY, tQuality);
 
         if (!qr.passed()) {
             // Quality failure -> POSITIONING (guidance, not attack)
@@ -601,10 +614,15 @@ public final class LivenessSession {
             return 0;
         }
         try {
+            long t = liveness.android.StageTimer.start();
             float[] in = liveness.engine.PadPreprocessor.prepare(
                     frame.pixelData(), frame.widthPx(), frame.heightPx(),
                     frame.faceBboxX(), frame.faceBboxY(), frame.faceBboxWidth(), frame.faceBboxHeight());
-            return padScorer.score(in);
+            liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.PREPROCESS, t);
+            t = liveness.android.StageTimer.start();
+            int padScoreTimed = padScorer.score(in);
+            liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.PAD_INFER, t);
+            return padScoreTimed;
         } catch (IllegalArgumentException e) {
             audit.logScore("PAD", 0, "UNSCORABLE: " + e.getMessage());
             return 0;
@@ -730,46 +748,8 @@ public final class LivenessSession {
         }
         return null;
     }
-
     private boolean detectChallengeAction(FaceFrame frame, String action) {
-        double[] landmarks = frame.landmarks();
-        if (landmarks == null || landmarks.length < 12) {
-            return false;
-        }
-
-        switch (action) {
-            case "BLINK":
-                // EAR threshold (Section 20.1, UNCALIBRATED seed via config)
-                double ear = LandmarkDetector.computeEAR(landmarks);
-                return LandmarkDetector.detectBlink(ear, config.earBlinkThreshold());
-
-            case "SMILE":
-                if (landmarks.length >= 16) {
-                    double mar = LandmarkDetector.computeMAR(landmarks);
-                    return LandmarkDetector.detectSmile(mar, config.marSmileThreshold());
-                }
-                return false;
-
-            case "TURN_LEFT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawTurnThreshold(), "LEFT");
-
-            case "TURN_RIGHT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawTurnThreshold(), "RIGHT");
-
-            case "LOOK_LEFT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawLookThreshold(), "LEFT");
-
-            case "LOOK_RIGHT":
-                return LandmarkDetector.detectTurn(frame.yawDeg(), config.yawLookThreshold(), "RIGHT");
-
-            case "LOOK_UP":
-                return frame.pitchDeg() < -config.pitchLookThreshold();
-
-            case "LOOK_DOWN":
-                return frame.pitchDeg() > config.pitchLookThreshold();
-
-            default:
-                return false;
-        }
+        return liveness.engine.ChallengeActionDetector.detect(
+                action, frame.landmarks(), frame.yawDeg(), frame.pitchDeg(), config);
     }
 }
