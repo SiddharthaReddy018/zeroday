@@ -23,7 +23,7 @@ import liveness.policy.LivenessConfig;
 import java.util.Objects;
 
 /**
- * Service-layer orchestrator for face liveness verification (§22).
+ * Service-layer orchestrator for face liveness verification (Section 22).
  * <p>
  * Liveness enforcement lives HERE, NOT in the UI. A UI bug can never
  * accept a failed liveness result. Inference never runs on the UI thread.
@@ -61,7 +61,7 @@ public final class LivenessService {
     /**
      * Runs the full liveness pipeline on the calling thread.
      * <p>
-     * Call from a background thread — never from the UI thread.
+     * Call from a background thread -- never from the UI thread.
      *
      * @param subjectId     the subject being verified
      * @param device        the frame source (MDS adapter or mock)
@@ -156,7 +156,7 @@ public final class LivenessService {
 
                 case CHALLENGE_PROMPT:
                     if (workflow == WorkflowType.INFANT) {
-                        // INFANT: passive-only, skip challenges → treat as bona fide
+                        // INFANT: passive-only, skip challenges -> treat as bona fide
                         // This path shouldn't be reached if config disables active for INFANT
                         break;
                     }
@@ -220,7 +220,7 @@ public final class LivenessService {
 
     private CaptureIntegrityChecker buildCaptureIntegrity(DeviceAdapter device) {
         FrameSequenceMonitor monitor = new FrameSequenceMonitor(
-                config.frameFreezePHashWindowSize(), device.expectedFrameIntervalMs(), config);
+                config.loopWindowFrames(), device.expectedFrameIntervalMs(), config);
         DeviceIdentityValidator deviceId = new DeviceIdentityValidator();
 
         FreshnessChecker freshness = new FreshnessChecker(config.rcaptureFreshnessWindowMs());
@@ -292,8 +292,18 @@ public final class LivenessService {
         public int retryCount()            { return retryCount; }
         public String failureReason()      { return failureReason; }
         public liveness.audit.AuditSeal.SignedHead auditHead() { return auditHead; }
-        public String auditHeadHash() { return auditHead != null ? auditHead.headHash() : null; }
-        public int auditEntryCount()  { return auditHead != null ? auditHead.size() : 0; }
+        public String auditHeadHash() {
+            if (auditHead != null) return auditHead.headHash();
+            return attestation != null ? attestation.auditHeadHash() : null;
+        }
+        public int auditEntryCount() {
+            if (auditHead != null) return auditHead.size();
+            return attestation != null ? attestation.auditEntryCount() : 0;
+        }
+        public String exportSealedHeadAndCount() {
+            String head = auditHeadHash();
+            return (head != null ? head : "NONE") + ":" + auditEntryCount();
+        }
 
         /** True only if verdict is PASS and attestation is present. */
         public boolean isSuccess() {
