@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -142,7 +143,7 @@ public final class PipelineBenchmark {
             }
 
             Map<String, Object> out = new LinkedHashMap<>();
-            out.put("bench", "pipeline_" + mode.name().toLowerCase());
+            out.put("bench", "pipeline_" + mode.name().toLowerCase(Locale.ROOT));
             out.put("pad_model", padModel.getFileName().toString());
             out.put("pad_model_version", scorer.modelVersion());
             out.put("runtime", MiniFasNetScorer.RUNTIME_DESCRIPTION);

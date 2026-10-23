@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 /**
  * Loads evaluation dataset manifests in CSV format (§12.1).
@@ -90,7 +91,7 @@ public final class ManifestLoader {
         String[] headers = parseRow(headerLine);
         Map<String, Integer> columnIndex = new HashMap<>();
         for (int i = 0; i < headers.length; i++) {
-            columnIndex.put(headers[i].toLowerCase(), i);
+            columnIndex.put(headers[i].toLowerCase(Locale.ROOT), i);
         }
 
         // Validate required columns

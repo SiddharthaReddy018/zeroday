@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 /**
  * Component-level performance instrumentation (§26.3).
@@ -95,7 +96,7 @@ public final class LatencyMetrics {
         List<String> sorted = new ArrayList<>(measurements.keySet());
         Collections.sort(sorted);
         for (String comp : sorted) {
-            sb.append(String.format("| %s | %d | %.2f | %.2f | %.2f | %.2f | %.2f |\n",
+            sb.append(String.format(Locale.ROOT, "| %s | %d | %.2f | %.2f | %.2f | %.2f | %.2f |\n",
                     comp, count(comp),
                     percentile(comp, 50),
                     percentile(comp, 90),

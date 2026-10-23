@@ -50,6 +50,7 @@ public final class LivenessAndroidBootstrap {
      * @param miniFasNetModelBytes raw model bytes for MiniFASNet PAD model
      * @param miniFasNetModelSha256 pinned SHA-256 (hex) of the PAD model; mandatory, a mismatch fails closed
      * @param sfaceModelBytes raw model bytes for SFace identity embedding model
+     * @param sfaceModelSha256 pinned SHA-256 (hex) of the SFace model; mandatory, a mismatch fails closed
      * @param sbiTrustAnchorCerts trusted X.509 certificates for SBI JWT verification
      * @return the configured LivenessService
      * @throws Exception if keystore, model, or verifier initialization fails
@@ -60,6 +61,7 @@ public final class LivenessAndroidBootstrap {
             byte[] miniFasNetModelBytes,
             String miniFasNetModelSha256,
             byte[] sfaceModelBytes,
+            String sfaceModelSha256,
             List<X509Certificate> sbiTrustAnchorCerts) throws Exception {
 
         // 1. Hardware-backed KeyStore signing setup
@@ -68,7 +70,7 @@ public final class LivenessAndroidBootstrap {
         AndroidKeyStoreSigner signer = new AndroidKeyStoreSigner(keyAlias);
 
         // 2. Production Face Embedder (SFace 112x112)
-        SFaceEmbedder sfaceEmbedder = new SFaceEmbedder(sfaceModelBytes, detector);
+        SFaceEmbedder sfaceEmbedder = new SFaceEmbedder(sfaceModelBytes, sfaceModelSha256, detector);
 
         // 3. Cryptographic trust verification of SBI JWT responses
         SbiJwtVerifier jwtVerifier = (sbiTrustAnchorCerts != null && !sbiTrustAnchorCerts.isEmpty())

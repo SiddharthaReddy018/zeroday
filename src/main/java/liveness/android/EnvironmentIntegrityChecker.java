@@ -3,6 +3,7 @@ package liveness.android;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -138,7 +139,7 @@ public final class EnvironmentIntegrityChecker {
         for (String c : XPOSED_CLASSES) if (probe.classExists(c)) { f.add(Finding.HOOK_XPOSED); break; }
         for (String pkg : XPOSED_PACKAGES) if (probe.isPackageInstalled(pkg)) { f.add(Finding.HOOK_XPOSED); break; }
         for (String m : probe.loadedModules()) {
-            String l = m == null ? "" : m.toLowerCase();
+            String l = m == null ? "" : m.toLowerCase(Locale.ROOT);
             // Tightened (ADR-010 / 4.8): avoid matching standalone "gmain" which occurs in legitimate GLib
             if (l.contains("frida") || l.contains("gum-js-loop") || (l.contains("gmain") && l.contains("gum"))) {
                 f.add(Finding.HOOK_FRIDA);
@@ -165,5 +166,5 @@ public final class EnvironmentIntegrityChecker {
         return fp.startsWith("generic") || fp.contains("generic_x86") || fp.contains("/sdk_gphone");
     }
 
-    private static String lower(String s) { return s == null ? "" : s.toLowerCase(); }
+    private static String lower(String s) { return s == null ? "" : s.toLowerCase(Locale.ROOT); }
 }

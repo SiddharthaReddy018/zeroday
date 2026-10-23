@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Locale;
 
 /**
  * Fairness analysis per §12.4, §24.4, R7.
@@ -168,8 +169,8 @@ public final class FairnessAnalyzer {
             double swingPp = Math.abs(g.bpcer - overallBpcer) * 100.0;
             if (swingPp > SWING_THRESHOLD_PP) {
                 flagged.add(category + "=" + g.group
-                        + " (BPCER=" + String.format("%.4f", g.bpcer)
-                        + ", swing=" + String.format("%.1f", swingPp) + "pp"
+                        + " (BPCER=" + String.format(Locale.ROOT, "%.4f", g.bpcer)
+                        + ", swing=" + String.format(Locale.ROOT, "%.1f", swingPp) + "pp"
                         + (g.exploratory ? ", EXPLORATORY" : "") + ")");
             }
         }
@@ -195,7 +196,7 @@ public final class FairnessAnalyzer {
     public String report() {
         StringBuilder sb = new StringBuilder();
         sb.append("## Fairness Analysis (§12.4, §24.4)\n\n");
-        sb.append(String.format("**Bias Index:** %.6f (lower = more fair)\n\n", biasIndex()));
+        sb.append(String.format(Locale.ROOT, "**Bias Index:** %.6f (lower = more fair)\n\n", biasIndex()));
 
         appendGroupTable(sb, "Monk Skin Tone", groupBpcerBySkinTone());
         appendGroupTable(sb, "Gender", groupBpcerByGender());
@@ -224,7 +225,7 @@ public final class FairnessAnalyzer {
         sb.append("| Group | BPCER | N | Subjects | CI (95%) | Status |\n");
         sb.append("|---|---|---|---|---|---|\n");
         for (GroupResult g : groups.values()) {
-            sb.append(String.format("| %s | %.4f | %d | %d | %s | %s |\n",
+            sb.append(String.format(Locale.ROOT, "| %s | %.4f | %d | %d | %s | %s |\n",
                     g.group, g.bpcer, g.total, g.subjectCount, g.ci,
                     g.exploratory ? "EXPLORATORY" : "conclusive"));
         }

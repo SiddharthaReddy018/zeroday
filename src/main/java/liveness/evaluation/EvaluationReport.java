@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Locale;
 
 /**
  * Generates the final ISO/IEC 30107-3 evaluation report (§12, §24, R6).
@@ -89,12 +90,12 @@ public final class EvaluationReport {
         StringBuilder sb = new StringBuilder();
         sb.append("# Face Liveness PAD — Evaluation Report\n\n");
         sb.append("**ISO/IEC 30107-3 aligned (metrics and reporting structure; not a conformance claim) · MOSIP Decode 2026**\n\n");
-        sb.append(String.format("**Threshold:** %d (score 0-100, higher = more live)\n\n", padMetrics.threshold()));
-        sb.append(String.format("**Total samples:** %d\n\n", padMetrics.sampleCount()));
+        sb.append(String.format(Locale.ROOT, "**Threshold:** %d (score 0-100, higher = more live)\n\n", padMetrics.threshold()));
+        sb.append(String.format(Locale.ROOT, "**Total samples:** %d\n\n", padMetrics.sampleCount()));
 
         // Rule of 30 validation
         int bfSubjects = padMetrics.bonafideSubjectCount();
-        sb.append(String.format("**Bona fide subjects:** %d %s\n\n",
+        sb.append(String.format(Locale.ROOT, "**Bona fide subjects:** %d %s\n\n",
                 bfSubjects,
                 padMetrics.ruleOf30Satisfied()
                         ? "(Rule of 30 satisfied)"
@@ -167,18 +168,18 @@ public final class EvaluationReport {
 
         for (String species : sortedSpecies) {
             PadMetrics.SpeciesResult r = results.get(species);
-            String rateStr = Double.isNaN(r.rate()) ? "not measured" : String.format("%.4f", r.rate());
-            sb.append(String.format("| %s | %s | %d | %s |\n",
+            String rateStr = Double.isNaN(r.rate()) ? "not measured" : String.format(Locale.ROOT, "%.4f", r.rate());
+            sb.append(String.format(Locale.ROOT, "| %s | %s | %d | %s |\n",
                     species, rateStr, r.count(), r.ci()));
         }
 
         // Worst-species headline
         PadMetrics.SpeciesResult worst = padMetrics.worstSpeciesApcer();
         if (worst != null) {
-            String worstRateStr = Double.isNaN(worst.rate()) ? "not measured" : String.format("%.4f", worst.rate());
+            String worstRateStr = Double.isNaN(worst.rate()) ? "not measured" : String.format(Locale.ROOT, "%.4f", worst.rate());
             boolean isExploratory = exploratory || padMetrics.totalAttackCount() < 30 || padMetrics.bonafideCount() < 30 || !padMetrics.ruleOf30Satisfied() || worst.count() < 30;
             String tag = isExploratory ? " [EXPLORATORY]" : "";
-            sb.append(String.format("\n**Worst-species headline APCER%s:** %s = %s (N=%d) %s\n\n",
+            sb.append(String.format(Locale.ROOT, "\n**Worst-species headline APCER%s:** %s = %s (N=%d) %s\n\n",
                     tag, worst.species(), worstRateStr, worst.count(), worst.ci()));
         }
     }
@@ -186,10 +187,10 @@ public final class EvaluationReport {
     private void appendBpcer(StringBuilder sb) {
         sb.append("## BPCER\n\n");
         PadMetrics.RateResult bpcer = padMetrics.bpcer();
-        String rateStr = Double.isNaN(bpcer.rate()) ? "not measured" : String.format("%.4f", bpcer.rate());
+        String rateStr = Double.isNaN(bpcer.rate()) ? "not measured" : String.format(Locale.ROOT, "%.4f", bpcer.rate());
         boolean isExploratory = exploratory || padMetrics.totalAttackCount() < 30 || padMetrics.bonafideCount() < 30 || !padMetrics.ruleOf30Satisfied() || bpcer.count() < 30;
         String tag = isExploratory ? " [EXPLORATORY]" : "";
-        sb.append(String.format("**BPCER%s:** %s (N=%d) %s\n\n",
+        sb.append(String.format(Locale.ROOT, "**BPCER%s:** %s (N=%d) %s\n\n",
                 tag, rateStr, bpcer.count(), bpcer.ci()));
     }
 
@@ -197,9 +198,9 @@ public final class EvaluationReport {
         sb.append("## D-EER (Detection Equal Error Rate)\n\n");
         PadMetrics.DetPoint deer = padMetrics.deer();
         if (Double.isNaN(deer.apcer()) || Double.isNaN(deer.bpcer())) {
-            sb.append(String.format("**D-EER:** not computable (operating point: %s)\n\n", deer.label()));
+            sb.append(String.format(Locale.ROOT, "**D-EER:** not computable (operating point: %s)\n\n", deer.label()));
         } else {
-            sb.append(String.format("**D-EER:** ~%.4f at threshold %d (APCER=%.4f, BPCER=%.4f, operating point: %s)\n\n",
+            sb.append(String.format(Locale.ROOT, "**D-EER:** ~%.4f at threshold %d (APCER=%.4f, BPCER=%.4f, operating point: %s)\n\n",
                     (deer.apcer() + deer.bpcer()) / 2.0,
                     deer.threshold(), deer.apcer(), deer.bpcer(), deer.label()));
         }

@@ -1,5 +1,7 @@
 package liveness.evaluation;
 
+import java.util.Locale;
+
 /**
  * Injection Attack Detection metrics (Section 12.2, Section 24.2).
  * <p>
@@ -147,9 +149,9 @@ public final class IadMetrics {
         sb.append("> periodic or large legitimate motion can look like a loop. Loop detection is a soft signal until real-camera tuning (Part 2 X13).\n");
         if (freezeTotal > 0 || loopTotal > 0 || nonceSwapTotal > 0) {
             sb.append("\n");
-            sb.append(String.format("- **Overall IAD bypass rate:** %.4f\n", bypassRate()));
+            sb.append(String.format(Locale.ROOT, "- **Overall IAD bypass rate:** %.4f\n", bypassRate()));
             if (!Double.isNaN(averageDetectionLatencyMs())) {
-                sb.append(String.format("- **Average detection latency:** %.2f ms\n", averageDetectionLatencyMs()));
+                sb.append(String.format(Locale.ROOT, "- **Average detection latency:** %.2f ms\n", averageDetectionLatencyMs()));
             }
         }
         return sb.toString();
@@ -158,10 +160,10 @@ public final class IadMetrics {
     /** R9: a row with no trials is "not measured", never a 0.0000 rate. */
     private static void row(StringBuilder sb, String name, int total, int hit, double rate) {
         if (total == 0) {
-            sb.append(String.format("| %s | 0 | - | not measured (no trials in this run) | - |\n", name));
+            sb.append(String.format(Locale.ROOT, "| %s | 0 | - | not measured (no trials in this run) | - |\n", name));
         } else {
             WilsonConfidenceInterval.Interval ci = WilsonConfidenceInterval.compute(hit, total);
-            sb.append(String.format("| %s | %d | %d | %.4f | %s |\n", name, total, hit, rate, ci));
+            sb.append(String.format(Locale.ROOT, "| %s | %d | %d | %.4f | %s |\n", name, total, hit, rate, ci));
         }
     }
 
