@@ -27,15 +27,12 @@ android {
             // Desktop-only code stays out of the APK.
             java.exclude 'liveness/evaluation/**'
             java.exclude 'liveness/desktop/**'
-            java.exclude 'liveness/device/MdsHttpDeviceAdapter.java'
-            java.exclude 'liveness/device/MdsStreamReader.java'
         }
         test {
             java.srcDirs += ['../../src/test/java']
             java.exclude 'liveness/evaluation/**'
             java.exclude 'liveness/desktop/**'
             java.exclude 'liveness/engine/ModelQualificationTest.java'
-            java.exclude 'liveness/device/**'
             resources.srcDirs += ['../../']   // makes ui-contract/events-schema.json reachable
         }
     }

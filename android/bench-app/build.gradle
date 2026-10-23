@@ -27,8 +27,6 @@ android {
             java.srcDirs += ['../../src/main/java']
             java.exclude 'liveness/evaluation/**'
             java.exclude 'liveness/desktop/**'
-            java.exclude 'liveness/device/MdsHttpDeviceAdapter.java'
-            java.exclude 'liveness/device/MdsStreamReader.java'
             java.exclude 'liveness/android/glue/**'
         }
     }

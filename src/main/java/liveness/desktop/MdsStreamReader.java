@@ -1,4 +1,4 @@
-package liveness.device;
+package liveness.desktop;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
