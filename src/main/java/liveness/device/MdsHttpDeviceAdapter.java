@@ -55,7 +55,7 @@ public class MdsHttpDeviceAdapter implements DeviceAdapter {
     }
 
     public static SbiIntentDeviceAdapter.RgbDecoder defaultDesktopDecoder() {
-        SbiIntentDeviceAdapter.RgbDecoder direct = IsoFaceRgbDecoder.desktopJpegDecoder();
+        SbiIntentDeviceAdapter.RgbDecoder direct = liveness.desktop.DesktopJpegDecoder.create();
         IsoFaceRgbDecoder iso = new IsoFaceRgbDecoder(direct, null);
         return encoded -> {
             try {
