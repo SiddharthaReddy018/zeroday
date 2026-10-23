@@ -44,8 +44,8 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
 
     // Defaults copied from tools/calibrate_same_face.py's existing FaceDetectorYN.create
     // call. They are reference parameters, not thresholds tuned to these decoder tests.
-    static final double SCORE_THRESHOLD = 0.6;
-    static final double NMS_THRESHOLD = 0.3;
+    static final float SCORE_THRESHOLD = 0.6f;
+    static final float NMS_THRESHOLD = 0.3f;
     static final int TOP_K = 5000;
     static final double UNAVAILABLE_POSE_DEGREES = Double.MAX_VALUE;
 
@@ -247,17 +247,20 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
                             || !Float.isFinite(bw) || !Float.isFinite(bh) || bw <= 0.0f || bh <= 0.0f) {
                         continue;
                     }
-                    float x = cx - bw / 2.0f;
-                    float y = cy - bh / 2.0f;
-                    float rawRight = x + bw;
-                    float rawBottom = y + bh;
-                    if (!Double.isFinite(x) || !Double.isFinite(y)
-                            || !Double.isFinite(rawRight) || !Double.isFinite(rawBottom)) continue;
+                    float x1 = cx - bw / 2.0f;
+                    float y1 = cy - bh / 2.0f;
+                    float x2 = x1 + bw;
+                    float y2 = y1 + bh;
+                    if (!Float.isFinite(x1) || !Float.isFinite(y1)
+                            || !Float.isFinite(x2) || !Float.isFinite(y2)) continue;
 
-                    x /= scaleX;
-                    y /= scaleY;
-                    double right = rawRight / scaleX;
-                    double bottom = rawBottom / scaleY;
+                    // Keep reference FP32 arithmetic in model coordinates, then apply the
+                    // inverse resize in double precision. This avoids a second FP32 rounding
+                    // step when mapping coordinates back to the original frame.
+                    double x = x1 / scaleX;
+                    double y = y1 / scaleY;
+                    double right = x2 / scaleX;
+                    double bottom = y2 / scaleY;
                     double clippedX = clamp(x, 0.0, frameWidth);
                     double clippedY = clamp(y, 0.0, frameHeight);
                     double clippedRight = clamp(right, 0.0, frameWidth);
