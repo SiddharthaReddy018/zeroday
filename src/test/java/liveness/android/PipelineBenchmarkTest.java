@@ -16,9 +16,11 @@ class PipelineBenchmarkTest {
 
     private static final Path INT8 = Paths.get("datasets/models/MiniFASNetV2-SE-int8.onnx");
 
+    /** Honest placeholder: not production grade, never called (the benchmark session is fail-closed on same-face). */
     private static final FaceEmbedder EMBEDDER = new FaceEmbedder() {
-        @Override public float[] embed(byte[] rgb, int w, int h) { return new float[128]; }
-        @Override public boolean productionGrade() { return true; }
+        @Override public float[] embed(byte[] rgb, int w, int h) {
+            throw new UnsupportedOperationException("not measured");
+        }
     };
 
     @Test

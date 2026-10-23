@@ -65,7 +65,7 @@ public final class PipelineBenchmark {
             CameraXDeviceAdapter camera = new CameraXDeviceAdapter("bench-cam", fixedBox,
                     CameraXDeviceAdapter.DEFAULT_QUEUE_CAPACITY, CameraXDeviceAdapter.DEFAULT_FRAME_TIMEOUT_MS,
                     expectedIntervalMs);
-            LivenessSession session = service.startSession("bench-subject", camera, "bench-machine", LivenessService.WorkflowType.RESIDENT_REGISTRATION);
+            LivenessSession session = service.startBenchmarkSession("bench-subject", camera, "bench-machine", LivenessService.WorkflowType.RESIDENT_REGISTRATION);
             session.start();
             LivenessState st = session.openDevice();
             if (st.isTerminal()) throw new IllegalStateException("session did not open: " + st);

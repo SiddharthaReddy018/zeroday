@@ -37,10 +37,15 @@ final class BenchRunner {
     static final int PIPE_WARMUP = 60;
     static final int PIPE_FRAMES = 400;
 
-    /** Embedder/signer are inert placeholders: neither runs per frame, and the report says SFace/signing are not measured. */
+    /**
+     * Embedder/signer are inert placeholders: neither runs per frame, and the report says SFace/signing are not
+     * measured. This embedder is honest about it (not production grade, always throws), and the pipeline benchmark
+     * opens its session through LivenessService.startBenchmarkSession, which never reaches a PASS verdict.
+     */
     private static final FaceEmbedder INERT_EMBEDDER = new FaceEmbedder() {
-        @Override public float[] embed(byte[] rgb, int w, int h) { return new float[128]; }
-        @Override public boolean productionGrade() { return true; }
+        @Override public float[] embed(byte[] rgb, int w, int h) {
+            throw new UnsupportedOperationException("SFace is not measured by the bench app");
+        }
     };
 
     static String runPipeline(Context ctx, String assetName, PipelineBenchmark.Mode mode) throws Exception {
