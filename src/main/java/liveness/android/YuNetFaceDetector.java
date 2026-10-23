@@ -184,6 +184,12 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         return top * (1.0 - fy) + bottom * fy;
     }
 
+    /** Remove only sub-0.0001-pixel floating-point noise around integral coordinates. */
+    private static double snapNearInteger(double value) {
+        double nearest = Math.rint(value);
+        return Math.abs(value - nearest) <= 1e-4 ? nearest : value;
+    }
+
     private static double clamp(double value, double low, double high) {
         return Math.max(low, Math.min(high, value));
     }
@@ -296,10 +302,14 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         if (kept.isEmpty()) return Observation.NONE;
 
         Candidate best = kept.get(0);
-        int left = (int) Math.floor(best.x);
-        int top = (int) Math.floor(best.y);
-        int right = (int) Math.ceil(best.x + best.w);
-        int bottom = (int) Math.ceil(best.y + best.h);
+        // Float32 model outputs can put a mathematically integral edge a few ulps
+        // either side of the integer. Snap only extremely-near edges before floor/ceil,
+        // so numerical noise does not expand a box by one pixel; true fractional edges
+        // still round outward and conservatively enclose the face.
+        int left = (int) Math.floor(snapNearInteger(best.x));
+        int top = (int) Math.floor(snapNearInteger(best.y));
+        int right = (int) Math.ceil(snapNearInteger(best.x + best.w));
+        int bottom = (int) Math.ceil(snapNearInteger(best.y + best.h));
         double[] landmarks = new double[LandmarkLayout.FULL_LENGTH];
         Arrays.fill(landmarks, Double.NaN);
         System.arraycopy(best.alignment, 0, landmarks, LandmarkLayout.ALIGN5, best.alignment.length);
