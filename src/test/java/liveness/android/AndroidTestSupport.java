@@ -10,15 +10,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-/** Shared fakes and builders for the Android unit tests (pure JVM, no Android SDK). */
-final class AndroidTestSupport {
+/**
+ * Shared fakes and builders for the Android unit tests (pure JVM, no Android SDK).
+ * Public (with the few members used from liveness.desktop tests) so desktop-only tests in another
+ * package can reuse the same fixtures.
+ */
+public final class AndroidTestSupport {
 
     private AndroidTestSupport() {}
 
     // ---------- YUV ----------
 
     /** Textured luma (so the Laplacian variance is high), neutral chroma, tightly packed strides. */
-    static YuvFrame texturedFrame(int w, int h, long tsMs, int rotation, long seed) {
+    public static YuvFrame texturedFrame(int w, int h, long tsMs, int rotation, long seed) {
         byte[] y = new byte[w * h];
         Random rnd = new Random(seed);
         for (int i = 0; i < y.length; i++) y[i] = (byte) (64 + rnd.nextInt(128)); // mean ~128
@@ -45,7 +49,7 @@ final class AndroidTestSupport {
 
     // ---------- detector ----------
 
-    static FaceDetector oneFace() {
+    public static FaceDetector oneFace() {
         return (rgb, w, h) -> new FaceDetector.Observation(1, w / 4, h / 4, w / 2, h / 2, 0.0, 0.0, 0.0, null);
     }
 
@@ -87,7 +91,7 @@ final class AndroidTestSupport {
         return MiniJson.write(root).getBytes(StandardCharsets.UTF_8);
     }
 
-    static byte[] captureResponse(String txId, String isoTs, byte[] image, String errorCode) {
+    public static byte[] captureResponse(String txId, String isoTs, byte[] image, String errorCode) {
         return captureResponseFor(jwt(capturePayload(txId, isoTs, image)), errorCode);
     }
 
@@ -124,10 +128,10 @@ final class AndroidTestSupport {
     static final String APP_ID = "com.sbi.face";
 
     /** Scriptable SBI launcher following the Android SBI spec (discovery, appId.Info, appId.rCapture). */
-    static final class FakeLauncher implements SbiIntentLauncher {
+    public static final class FakeLauncher implements SbiIntentLauncher {
         List<String> packages = Collections.singletonList("com.sbi.face");
         /** Handler for rCapture; null => timeout. */
-        java.util.function.Function<SbiIntentRequest, ActivityResult> captureHandler;
+        public java.util.function.Function<SbiIntentRequest, ActivityResult> captureHandler;
         java.util.Set<String> discoveryTimeouts = new java.util.HashSet<>();
         String deviceStatus = "Ready";
         String infoStatus = "Ready";
@@ -160,7 +164,7 @@ final class AndroidTestSupport {
     }
 
     /** Scriptable environment. Defaults describe a clean production device. */
-    static final class FakeProbe implements EnvProbe {
+    public static final class FakeProbe implements EnvProbe {
         String tags = "release-keys";
         Map<String, String> props = new LinkedHashMap<>();
         java.util.Set<String> files = new java.util.HashSet<>();

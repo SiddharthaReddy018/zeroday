@@ -1,5 +1,16 @@
-package liveness.android;
+package liveness.desktop;
 
+import liveness.android.AndroidDeviceAdapter;
+import liveness.android.AndroidTestSupport;
+import liveness.android.CameraXDeviceAdapter;
+import liveness.android.CrossStreamBinder;
+import liveness.android.EnvironmentIntegrityChecker;
+import liveness.android.FaceEmbedder;
+import liveness.android.IsoFaceRgbDecoder;
+import liveness.android.MiniJson;
+import liveness.android.SbiIntentDeviceAdapter;
+import liveness.android.SbiIntentLauncher;
+import liveness.android.SbiJwtVerifier;
 import liveness.challenge.ChallengeGenerator;
 import liveness.core.FaceFrame;
 import liveness.core.FrameQuality;
