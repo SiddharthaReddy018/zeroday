@@ -31,6 +31,13 @@ public final class SFaceEmbedder implements FaceEmbedder, AutoCloseable {
         this(modelPath, (FaceDetector) null);
     }
 
+    /**
+     * Unpinned in-memory model. Nothing checks that these bytes are the SFace model you expect.
+     *
+     * @deprecated use {@link #SFaceEmbedder(byte[], String, FaceDetector)}, which pins the SHA-256
+     *             and fails closed on a mismatch.
+     */
+    @Deprecated
     public SFaceEmbedder(byte[] modelBytes) {
         this(modelBytes, (FaceDetector) null);
     }
@@ -51,6 +58,41 @@ public final class SFaceEmbedder implements FaceEmbedder, AutoCloseable {
         }
     }
 
+    /**
+     * Pinned in-memory model (production path). The bytes are hashed and compared with
+     * {@code expectedSha256} before any ONNX session is created.
+     *
+     * @param expectedSha256 mandatory SHA-256 of the SFace model, hex (case-insensitive)
+     * @throws IllegalArgumentException null/empty bytes, or a missing/blank pin
+     * @throws SecurityException        the bytes do not hash to {@code expectedSha256}
+     * @throws IllegalStateException    the bytes match the pin but are not a loadable model
+     */
+    public SFaceEmbedder(byte[] modelBytes, String expectedSha256, FaceDetector detector) {
+        this(verifiedModelBytes(modelBytes, expectedSha256), detector);
+    }
+
+    private static byte[] verifiedModelBytes(byte[] modelBytes, String expectedSha256) {
+        if (modelBytes == null || modelBytes.length == 0) {
+            throw new IllegalArgumentException("SFace model bytes empty");
+        }
+        if (expectedSha256 == null || expectedSha256.trim().isEmpty()) {
+            throw new IllegalArgumentException("SFace model SHA-256 pin is required for in-memory model bytes");
+        }
+        String actual = liveness.util.Sha256.hex(liveness.util.Sha256.digest(modelBytes));
+        if (!actual.equalsIgnoreCase(expectedSha256.trim())) {
+            throw new SecurityException("SFace model SHA-256 mismatch: expected "
+                    + expectedSha256 + " but computed " + actual);
+        }
+        return modelBytes;
+    }
+
+    /**
+     * Unpinned in-memory model. Nothing checks that these bytes are the SFace model you expect.
+     *
+     * @deprecated use {@link #SFaceEmbedder(byte[], String, FaceDetector)}, which pins the SHA-256
+     *             and fails closed on a mismatch.
+     */
+    @Deprecated
     public SFaceEmbedder(byte[] modelBytes, FaceDetector detector) {
         this.detector = detector;
         if (modelBytes == null || modelBytes.length == 0) {
