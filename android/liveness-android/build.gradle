@@ -52,7 +52,6 @@ android {
             java.exclude 'liveness/evaluation/**'
             java.exclude 'liveness/desktop/**'
             java.exclude 'liveness/engine/ModelQualificationTest.java'
-            resources.srcDirs += ['../../']   // makes ui-contract/events-schema.json reachable
         }
     }
 
@@ -99,3 +98,18 @@ dependencies {
 }
 
 tasks.withType(Test).configureEach { useJUnitPlatform() }
+
+tasks.withType(Test).configureEach {
+    workingDir = file('../..')
+    systemProperty 'liveness.allowStubs', 'true'
+}
+
+dependencies {
+    testImplementation 'com.microsoft.onnxruntime:onnxruntime:1.16.3'
+}
+
+configurations.configureEach {
+    if (name.endsWith('UnitTestRuntimeClasspath')) {
+        exclude group: 'com.microsoft.onnxruntime', module: 'onnxruntime-android'
+    }
+}
