@@ -48,6 +48,7 @@ public final class LivenessAndroidBootstrap {
      * @param activity the host ComponentActivity for SBI result launcher registration
      * @param detector face detector for CameraX frame observation
      * @param miniFasNetModelBytes raw model bytes for MiniFASNet PAD model
+     * @param miniFasNetModelSha256 pinned SHA-256 (hex) of the PAD model; mandatory, a mismatch fails closed
      * @param sfaceModelBytes raw model bytes for SFace identity embedding model
      * @param sbiTrustAnchorCerts trusted X.509 certificates for SBI JWT verification
      * @return the configured LivenessService
@@ -57,6 +58,7 @@ public final class LivenessAndroidBootstrap {
             ComponentActivity activity,
             FaceDetector detector,
             byte[] miniFasNetModelBytes,
+            String miniFasNetModelSha256,
             byte[] sfaceModelBytes,
             List<X509Certificate> sbiTrustAnchorCerts) throws Exception {
 
@@ -74,7 +76,7 @@ public final class LivenessAndroidBootstrap {
                 : SbiJwtVerifier.disabledForDevelopment();
 
         // 4. PAD Scorer & Same Face Checker
-        MiniFasNetScorer padScorer = new MiniFasNetScorer(miniFasNetModelBytes);
+        MiniFasNetScorer padScorer = new MiniFasNetScorer(miniFasNetModelBytes, miniFasNetModelSha256);
         SameFaceChecker sameFaceChecker = new SameFaceChecker(SFaceEmbedder.CALIBRATED_THRESHOLD);
 
         // 5. Config, Challenge Generator, and Rate Limiter
