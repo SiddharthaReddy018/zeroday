@@ -64,6 +64,21 @@ public final class PipelineBenchmark {
                                               YuvFrame[] framePool, String frameLabel,
                                               int width, int height, int rotation, int fps,
                                               int warmupFrames, int frames) throws Exception {
+        return runWith(padModel, signer, embedder, mode, detector, detectorLabel, framePool, frameLabel,
+                width, height, rotation, fps, warmupFrames, frames, null);
+    }
+
+    /**
+     * As above, with an optional BENCHMARK-ONLY override of the QualityGate blur threshold (null = config default).
+     * The result then carries blur_gate_override and gate_note: such a run measures latency, it is not a
+     * gate-passing run and must not be quoted as one.
+     */
+    public static Map<String, Object> runWith(Path padModel, Signer signer, FaceEmbedder embedder, Mode mode,
+                                              FaceDetector detector, String detectorLabel,
+                                              YuvFrame[] framePool, String frameLabel,
+                                              int width, int height, int rotation, int fps,
+                                              int warmupFrames, int frames,
+                                              Double blurMinVarianceOverride) throws Exception {
         if (frames < BLOCKS) throw new IllegalArgumentException("frames must be >= " + BLOCKS);
         if ((detector == null) != (framePool == null)) {
             throw new IllegalArgumentException("detector and framePool must be given together");
@@ -77,7 +92,9 @@ public final class PipelineBenchmark {
             if (scorer.isStubMode()) throw new IllegalStateException("refusing to benchmark the stub scorer");
             // No decision may fire: a verdict would end the session and stop PAD scoring mid-run.
             int total = warmupFrames + frames;
-            LivenessConfig config = LivenessConfig.builder().minQualifyingFrames(Integer.MAX_VALUE / 2).build();
+            LivenessConfig.Builder cfgBuilder = LivenessConfig.builder().minQualifyingFrames(Integer.MAX_VALUE / 2);
+            if (blurMinVarianceOverride != null) cfgBuilder.blurMinVariance(blurMinVarianceOverride);
+            LivenessConfig config = cfgBuilder.build();
             LivenessService service = new LivenessService(config, scorer,
                     new SameFaceChecker(0.48), new ChallengeGenerator(), new RetryRateLimiter(5, 60_000), signer);
             service.setFaceEmbedder(embedder);
@@ -134,6 +151,8 @@ public final class PipelineBenchmark {
                     config.faceSizeMinPx(), config.poseMaxYawDeg(), config.poseMaxPitchDeg());
             Map<String, Integer> gateReasons = new LinkedHashMap<>();
             String firstRejectStats = null;
+            double lapSum = 0;
+            int lapN = 0;
             long lockstepTs = 1_000_000L;
             int seq = 0;
             try {
@@ -156,6 +175,8 @@ public final class PipelineBenchmark {
                                         ff.yawDeg(), ff.pitchDeg(), ff.rollDeg(),
                                         ff.faceCount(), ff.widthPx(), ff.heightPx()));
                         gateReasons.merge(gr.passed() ? "pass" : gr.failureReason(), 1, Integer::sum);
+                        lapSum += ff.laplacianVariance();
+                        lapN++;
                         if (!gr.passed() && firstRejectStats == null) {
                             firstRejectStats = String.format(Locale.ROOT,
                                     "frame %d faceCount=%d bbox=%dx%d yaw=%.2f pitch=%.2f roll=%.2f brightness=%.2f laplacianVar=%.2f frame=%dx%d",
@@ -195,6 +216,12 @@ public final class PipelineBenchmark {
             out.put("not_measured", detector != null ? "SFace embedding, camera/ImageProxy copy, UI, signing"
                     : "face detector, SFace embedding, camera/ImageProxy copy, UI, signing");
             out.put("cores", Runtime.getRuntime().availableProcessors());
+            out.put("laplacian_variance_mean_measured", lapN > 0 ? lapSum / lapN : null);
+            if (blurMinVarianceOverride != null) {
+                out.put("blur_gate_override", blurMinVarianceOverride);
+                out.put("gate_note", "blur gate lowered from " + LivenessConfig.defaultConfig().blurMinVariance()
+                        + " to " + blurMinVarianceOverride + " for this run: latency only, QualityGate NOT representative");
+            }
             out.put("warmup_frames", warmupFrames);
             out.put("frames", frames);
             if (mode == Mode.PACED) out.put("producer_fps", fps);

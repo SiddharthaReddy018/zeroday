@@ -58,7 +58,7 @@ final class CompositePipelineBenchmark {
                             + "(camera path assumed 270: YUV->RGB cost not representative), pool " + pool.length
                             + " copies each with one luma LSB flipped to defeat FROZEN; soft LOOP_REPLAY flag may trip (audit only); "
                             + "not committed",
-                    W, H, 0, 30, BenchRunner.PIPE_WARMUP, BenchRunner.PIPE_FRAMES);
+                    W, H, 0, 30, BenchRunner.PIPE_WARMUP, BenchRunner.PIPE_FRAMES, 10.0);
             out.put("result", result);
         }
         out.put("after", DeviceInfo.dynamicInfo(ctx));
