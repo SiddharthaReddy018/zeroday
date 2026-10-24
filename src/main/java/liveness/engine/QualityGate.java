@@ -71,6 +71,11 @@ public final class QualityGate {
             return QualityResult.fail("guide.face.too_far");
         }
 
+        // Pose unavailable (detector sentinel Double.MAX_VALUE, or non-finite): not a pose violation.
+        if (poseUnavailable(frameData.yawDeg()) || poseUnavailable(frameData.pitchDeg())) {
+            return QualityResult.fail("guide.pose.unavailable");
+        }
+
         // Pose check (raw degrees — R3)
         if (Math.abs(frameData.yawDeg()) > maxYawDeg) {
             return QualityResult.fail("guide.pose.yaw_exceeded");
@@ -89,6 +94,10 @@ public final class QualityGate {
 
         double qualityWeight = (sharpnessWeight + poseWeight) / 2.0;
         return QualityResult.pass(qualityWeight);
+    }
+
+    private static boolean poseUnavailable(double deg) {
+        return Double.isNaN(deg) || Math.abs(deg) >= Double.MAX_VALUE;
     }
 
     // =========================================================================
