@@ -56,6 +56,8 @@ public final class MainActivity extends Activity {
         addBlurCandJob("Blur cand: plain_wall", "cand_plain_wall");
         addGateJob("Relative gate live: flap OFF (30 warmup + 300)", "flapoff");
         addGateJob("Relative gate live: flap ON (30 warmup + 300)", "flapon");
+        addSessionGateJob("Session + relative gate: flap OFF whole run (30 warmup + 300)", "sessflapoff");
+        addSessionGateJob("Session + relative gate: flip flap ON mid-run (30 warmup + 300)", "sessflip");
         addJob("fullFrameNorm latency (720x720 rot270 stride 768)", () -> FullNormLatencyBenchmark.run(this));
         addJob("Pipeline + REAL composite, 720x720 rot270 stride 768: INT8 (face_frame_720_sensor.png)", () -> CameraShapedPipelineBenchmark.run(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("PAD model only: INT8", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE-int8.onnx"));
@@ -83,6 +85,16 @@ public final class MainActivity extends Activity {
                 return "Camera permission requested. Grant it, then tap the button again.";
             }
             return CameraRelativeGateBenchmark.run(this, condition);
+        });
+    }
+
+    private void addSessionGateJob(String title, String condition) {
+        addJob(title, () -> {
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.CAMERA}, 1));
+                return "Camera permission requested. Grant it, then tap the button again.";
+            }
+            return CameraSessionRelativeBlurBenchmark.run(this, condition);
         });
     }
 
