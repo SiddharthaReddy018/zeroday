@@ -44,6 +44,7 @@ public final class MainActivity extends Activity {
         setContentView(root);
 
         addJob("YuNet detector only: ORT CPU", () -> BenchRunner.runYuNetDetector(this));
+        addJob("Composite: YuNet + ML Kit (face_frame.png)", () -> CompositeLatencyBenchmark.run(this));
         addJob("PAD model only: INT8", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("Per-frame pipeline, lockstep: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
         addJob("Per-frame pipeline, paced 30 fps: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.PACED));
