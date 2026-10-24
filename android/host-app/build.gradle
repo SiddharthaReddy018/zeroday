@@ -1,0 +1,64 @@
+// DEV host app: camera-only, no SBI, no Flutter. Compiles the shared engine plus a few glue classes directly,
+// same pattern as :bench-app.
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.oxalpha.liveness.host'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.oxalpha.liveness.host'
+        minSdk 28
+        targetSdk 34
+        versionCode 1
+        versionName '1'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs += ['../../src/main/java']
+            java.exclude 'liveness/evaluation/**'
+            java.exclude 'liveness/desktop/**'
+            java.srcDirs += ['../liveness-android/src/main/java']
+            // Only these glue classes are taken from :liveness-android. No Flutter plugin or bootstrap.
+            java.exclude { d -> !d.file.isDirectory() &&
+                    !(d.file.name in ['MlKitFaceDetector.java', 'CameraXController.java', 'CameraXAnalyzer.java', 'AndroidEnvProbe.java']) &&
+                    (d.file.path.contains('/liveness/android/glue/') || d.file.path.contains('/liveness-android/src/')) }
+        }
+    }
+
+    androidResources { noCompress 'onnx' }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug   // local demo only; never distribute
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.16.3'
+    implementation 'com.google.mlkit:face-detection:16.1.7'
+    def camerax = '1.3.1'
+    implementation "androidx.camera:camera-core:$camerax"
+    implementation "androidx.camera:camera-camera2:$camerax"
+    implementation "androidx.camera:camera-lifecycle:$camerax"
+    implementation "androidx.camera:camera-view:$camerax"
+    implementation 'androidx.core:core:1.12.0'
+    implementation 'androidx.activity:activity:1.8.2'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.lifecycle:lifecycle-common-java8:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime:2.6.2'
+    constraints {
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22')
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22')
+    }
+}
