@@ -56,6 +56,7 @@ public final class MainActivity extends Activity {
         addBlurCandJob("Blur cand: plain_wall", "cand_plain_wall");
         addGateJob("Relative gate live: flap OFF (30 warmup + 300)", "flapoff");
         addGateJob("Relative gate live: flap ON (30 warmup + 300)", "flapon");
+        addSessionRealJob("Session REAL gate (blur 100): run 1 (flap off, or flip by hand)", "sessreal100");
         addSessionGateJob("Session + relative gate: flap OFF whole run (30 warmup + 300)", "sessflapoff");
         addSessionGateJob("Session + relative gate: flip flap ON mid-run (30 warmup + 300)", "sessflip");
         addJob("fullFrameNorm latency (720x720 rot270 stride 768)", () -> FullNormLatencyBenchmark.run(this));
@@ -85,6 +86,16 @@ public final class MainActivity extends Activity {
                 return "Camera permission requested. Grant it, then tap the button again.";
             }
             return CameraRelativeGateBenchmark.run(this, condition);
+        });
+    }
+
+    private void addSessionRealJob(String title, String condition) {
+        addJob(title, () -> {
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.CAMERA}, 1));
+                return "Camera permission requested. Grant it, then tap the button again.";
+            }
+            return CameraSessionRelativeBlurBenchmark.run(this, condition, null);
         });
     }
 
