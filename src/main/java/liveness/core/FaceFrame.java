@@ -35,6 +35,7 @@ public final class FaceFrame {
     private final double[] landmarks;     // flattened landmark coords (nullable until detector runs)
     private final long pHash;             // 64-bit perceptual hash for freeze/loop detection (0 = not computed)
     private final byte[] encodedBytes;    // original encoded bytes (JPEG/JP2/ISO) for final capture imageSha256
+    private final double fullFrameNorm;   // whole-frame blur norm; -1.0 = unavailable
     private final byte[] contentDigest;   // content digest of downsampled gray frame for byte-identical freeze detection
 
     /**
@@ -104,6 +105,23 @@ public final class FaceFrame {
                      int faceCount, double laplacianVariance,
                      double brightnessMean, double[] landmarks, long pHash,
                      byte[] encodedBytes, byte[] contentDigest) {
+        this(quality, signature, deviceId, timestampMs, sequenceNum, widthPx, heightPx, pixelData,
+             faceBboxX, faceBboxY, faceBboxWidth, faceBboxHeight, yawDeg, pitchDeg, rollDeg,
+             faceCount, laplacianVariance, brightnessMean, landmarks, pHash, encodedBytes, contentDigest, -1.0);
+    }
+
+    /**
+     * Adds the whole-frame norm (BlurCandidates.fullFrameNorm). -1.0 means unavailable.
+     */
+    public FaceFrame(FrameQuality quality, String signature, int deviceId,
+                     long timestampMs, int sequenceNum,
+                     int widthPx, int heightPx, byte[] pixelData,
+                     int faceBboxX, int faceBboxY,
+                     int faceBboxWidth, int faceBboxHeight,
+                     double yawDeg, double pitchDeg, double rollDeg,
+                     int faceCount, double laplacianVariance,
+                     double brightnessMean, double[] landmarks, long pHash,
+                     byte[] encodedBytes, byte[] contentDigest, double fullFrameNorm) {
         this.quality = Objects.requireNonNull(quality, "quality");
         this.signature = Objects.requireNonNull(signature, "signature");
         this.deviceId = deviceId;
@@ -135,6 +153,7 @@ public final class FaceFrame {
             }
         }
         this.contentDigest = derived;
+        this.fullFrameNorm = fullFrameNorm;
     }
 
 
@@ -159,6 +178,7 @@ public final class FaceFrame {
     public double rollDeg()           { return rollDeg; }
     public int faceCount()            { return faceCount; }
     public double laplacianVariance() { return laplacianVariance; }
+    public double fullFrameNorm()     { return fullFrameNorm; }
     public double brightnessMean()    { return brightnessMean; }
     public double[] landmarks()       { return landmarks; }
     public long pHash()               { return pHash; }
