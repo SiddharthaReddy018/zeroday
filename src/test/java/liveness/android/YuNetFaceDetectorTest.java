@@ -120,6 +120,33 @@ class YuNetFaceDetectorTest {
         }
     }
 
+    @Test
+    void timedDetectMatchesPlainDetectAndFillsEveryStage() throws Exception {
+        assumeTrue(Files.isRegularFile(MODEL), "YuNet model not present: " + MODEL);
+        byte[] rgb = new byte[640 * 480 * 3];
+        for (int i = 0; i < rgb.length; i++) rgb[i] = (byte) ((i * 37) & 0xff);
+        try (YuNetFaceDetector detector = new YuNetFaceDetector(MODEL)) {
+            assertThrows(IllegalArgumentException.class, () -> detector.detectTimed(rgb, 640, 480, null));
+            assertThrows(IllegalArgumentException.class, () -> detector.detectTimed(rgb, 640, 480, new long[2]));
+            long[] stages = new long[YuNetFaceDetector.STAGE_NAMES.length];
+            long start = System.nanoTime();
+            FaceDetector.Observation timed = detector.detectTimed(rgb, 640, 480, stages);
+            long wall = System.nanoTime() - start;
+            FaceDetector.Observation plain = detector.detect(rgb, 640, 480);
+            assertEquals(plain.faceCount, timed.faceCount);
+            assertEquals(plain.bboxX, timed.bboxX);
+            assertEquals(plain.bboxY, timed.bboxY);
+            assertEquals(plain.bboxW, timed.bboxW);
+            assertEquals(plain.bboxH, timed.bboxH);
+            long sum = 0;
+            for (long s : stages) {
+                assertTrue(s > 0, "every stage must record a positive duration");
+                sum += s;
+            }
+            assertTrue(sum <= wall, "stage sum cannot exceed the wall time around the call");
+        }
+    }
+
     private static void setCandidate(float[][][][] outputs, int index,
                                      float cls, float obj, float left, float top,
                                      float logWidth, float logHeight) {

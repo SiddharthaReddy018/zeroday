@@ -113,27 +113,67 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         return modelSha256;
     }
 
+    /** Stage names for {@link #detectTimed}, in execution order. */
+    static final String[] STAGE_NAMES = {
+            "prepare_input", "tensor_create", "ort_run", "output_extract", "decode_nms"
+    };
+
     /** Full cost of input validation, preprocessing, ONNX inference, decoding, and NMS. */
     @Override
     public synchronized Observation detect(byte[] rgb, int width, int height) {
+        return detectInternal(rgb, width, height, null);
+    }
+
+    /**
+     * Same work and same result as {@link #detect}, additionally writing the nanoseconds spent in each
+     * stage of {@link #STAGE_NAMES} into {@code stageNanos}. Benchmark use only. Closing the tensor and
+     * result is not attributed to any stage.
+     */
+    synchronized Observation detectTimed(byte[] rgb, int width, int height, long[] stageNanos) {
+        if (stageNanos == null || stageNanos.length != STAGE_NAMES.length) {
+            throw new IllegalArgumentException("stageNanos must have length " + STAGE_NAMES.length);
+        }
+        return detectInternal(rgb, width, height, stageNanos);
+    }
+
+    private static long mark(long[] stageNanos) {
+        return stageNanos == null ? 0L : System.nanoTime();
+    }
+
+    private Observation detectInternal(byte[] rgb, int width, int height, long[] stageNanos) {
         if (closed) throw new IllegalStateException("YuNet detector is closed");
         if (rgb == null || width <= 0 || height <= 0
                 || (long) rgb.length < (long) width * height * 3L) {
             throw new IllegalArgumentException("Invalid RGB buffer for YuNet detection");
         }
 
+        long t0 = mark(stageNanos);
         ResizeInfo resize = prepareInput(rgb, width, height);
+        long t1 = mark(stageNanos);
         try (OnnxTensor input = OnnxTensor.createTensor(
-                    env, FloatBuffer.wrap(inputBuffer), new long[]{1, 3, INPUT_SIZE, INPUT_SIZE});
-             OrtSession.Result result = session.run(Collections.singletonMap("input", input))) {
-            float[][][][] outputs = new float[OUTPUT_NAMES.length][][][];
-            for (int i = 0; i < OUTPUT_NAMES.length; i++) {
-                String name = OUTPUT_NAMES[i];
-                outputs[i] = (float[][][]) result.get(name)
-                        .orElseThrow(() -> new IllegalStateException("Missing YuNet output: " + name))
-                        .getValue();
+                    env, FloatBuffer.wrap(inputBuffer), new long[]{1, 3, INPUT_SIZE, INPUT_SIZE})) {
+            long t2 = mark(stageNanos);
+            try (OrtSession.Result result = session.run(Collections.singletonMap("input", input))) {
+                long t3 = mark(stageNanos);
+                float[][][][] outputs = new float[OUTPUT_NAMES.length][][][];
+                for (int i = 0; i < OUTPUT_NAMES.length; i++) {
+                    String name = OUTPUT_NAMES[i];
+                    outputs[i] = (float[][][]) result.get(name)
+                            .orElseThrow(() -> new IllegalStateException("Missing YuNet output: " + name))
+                            .getValue();
+                }
+                long t4 = mark(stageNanos);
+                Observation observation = decode(outputs, width, height, resize.scaleX, resize.scaleY);
+                if (stageNanos != null) {
+                    long t5 = System.nanoTime();
+                    stageNanos[0] = t1 - t0;
+                    stageNanos[1] = t2 - t1;
+                    stageNanos[2] = t3 - t2;
+                    stageNanos[3] = t4 - t3;
+                    stageNanos[4] = t5 - t4;
+                }
+                return observation;
             }
-            return decode(outputs, width, height, resize.scaleX, resize.scaleY);
         } catch (OrtException e) {
             throw new IllegalStateException("YuNet ONNX inference failed", e);
         }
