@@ -1,5 +1,6 @@
 package liveness.flow;
 
+import liveness.android.BlurWindowGate;
 import liveness.android.FaceEmbedder;
 import liveness.audit.AuditChain;
 import liveness.audit.AuditEvent;
@@ -78,6 +79,7 @@ public final class LivenessSession {
     private BoundChallenge currentChallenge;
     private Attestation attestation;
     private FaceEmbedder faceEmbedder;      // optional; without it same-face fails closed (unless test-stubbed)
+    private BlurWindowGate relativeBlurGate;   // null when relativeBlurEnabled is false; one per session, not thread-safe
     private FaceFrame lastHostFrame;        // last quality-passing host frame carrying pixels
 
     /**
@@ -136,6 +138,10 @@ public final class LivenessSession {
         this.machine = new LivenessStateMachine();
         this.signer = Objects.requireNonNull(signer, "signer");
         this.machineUserId = Objects.requireNonNull(machineUserId, "machineUserId");
+        this.relativeBlurGate = config.relativeBlurEnabled()
+                ? new BlurWindowGate(config.relativeBlurWindow(), config.relativeBlurDropFactor(),
+                        config.relativeBlurYShiftFactor())
+                : null;
         StubPolicy.check(padScorer.isStubMode(), "PAD scorer");
         StubPolicy.check(sameFaceChecker.isStubbed(), "SameFaceChecker");
 
@@ -266,6 +272,22 @@ public final class LivenessSession {
             }
             // Already in POSITIONING -- stay there
             return current;
+        }
+
+        // --- 2b. Relative blur gate (additive, default off). Sessions with no valid full-frame sample skip it. ---
+        if (relativeBlurGate != null) {
+            BlurWindowGate.State bs = relativeBlurGate.update(frame.fullFrameNorm(), frame.brightnessMean());
+            if (relativeBlurGate.hasSamples() && bs != BlurWindowGate.State.OK) {
+                String why = bs == BlurWindowGate.State.LOST ? "guide.quality.light_unsteady"
+                        : bs == BlurWindowGate.State.BLUR ? "guide.quality.blur_relative"
+                        : "relative_blur_warmup";
+                if (current == LivenessState.PASSIVE) {
+                    LivenessState next = machine.fire(LivenessEvent.QUALITY_DROPPED);
+                    audit.logTransition(current, next, "QUALITY_DROPPED: " + why);
+                    return next;
+                }
+                return current;
+            }
         }
 
         if (frame.hasPixelData()) {
