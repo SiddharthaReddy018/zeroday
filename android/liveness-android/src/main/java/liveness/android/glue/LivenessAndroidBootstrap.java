@@ -2,6 +2,7 @@ package liveness.android.glue;
 
 import androidx.activity.ComponentActivity;
 
+import java.nio.file.Path;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.util.Collections;
@@ -10,12 +11,14 @@ import java.util.function.Supplier;
 
 import liveness.android.AndroidDeviceAdapter;
 import liveness.android.CameraXDeviceAdapter;
+import liveness.android.CompositeFaceDetector;
 import liveness.android.CrossStreamBinder;
 import liveness.android.EnvironmentIntegrityChecker;
 import liveness.android.FaceDetector;
 import liveness.android.SFaceEmbedder;
 import liveness.android.SbiIntentDeviceAdapter;
 import liveness.android.SbiJwtVerifier;
+import liveness.android.YuNetFaceDetector;
 import liveness.challenge.ChallengeGenerator;
 import liveness.crypto.AndroidKeyStoreSigner;
 import liveness.device.DeviceAdapter;
@@ -41,6 +44,28 @@ import liveness.service.LivenessService;
 public final class LivenessAndroidBootstrap {
 
     private LivenessAndroidBootstrap() {}
+
+    /**
+     * Builds the YuNet + ML Kit composite detector to pass to {@link #init}.
+     * YuNet supplies face count, bounding box and SFace alignment points; ML Kit supplies
+     * eye/mouth contours and head pose. Benchmark candidate: on-device accuracy not yet validated.
+     * The caller owns the result and should close it.
+     *
+     * @param yunetModelPath YuNet ONNX model on the device file system
+     */
+    public static CompositeFaceDetector createCompositeDetector(Path yunetModelPath) {
+        YuNetFaceDetector yunet = new YuNetFaceDetector(yunetModelPath);
+        try {
+            return new CompositeFaceDetector(yunet, new MlKitFaceDetector());
+        } catch (RuntimeException e) {
+            try {
+                yunet.close();
+            } catch (Exception suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
+        }
+    }
 
     /**
      * Initializes and configures the Liveness service and Flutter plugin.
