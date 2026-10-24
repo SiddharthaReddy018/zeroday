@@ -18,3 +18,4 @@ dependencyResolutionManagement {
 rootProject.name = 'liveness-android-m4'
 include ':liveness-android'
 include ':bench-app'
+include ':host-app'
