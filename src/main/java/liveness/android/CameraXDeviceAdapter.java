@@ -127,6 +127,7 @@ public final class CameraXDeviceAdapter implements DeviceAdapter {
                     luma[0], luma[1], 0.0, 0.0, Math.max(o.bboxW, o.bboxH),
                     o.yawDeg, o.pitchDeg, o.rollDeg, o.faceCount);
 
+            double fullNorm = BlurCandidates.fullFrameNorm(rgb, w, h);
             t = StageTimer.start();
             long pHash = perceptualHash(f);
             StageTimer.stop(StageTimer.Stage.PHASH, t);
@@ -137,7 +138,7 @@ public final class CameraXDeviceAdapter implements DeviceAdapter {
                     w, h, rgb,
                     o.bboxX, o.bboxY, o.bboxW, o.bboxH,
                     o.yawDeg, o.pitchDeg, o.rollDeg, o.faceCount,
-                    luma[0], luma[1], o.landmarks, pHash);
+                    luma[0], luma[1], o.landmarks, pHash, null, null, fullNorm);
             StageTimer.stop(StageTimer.Stage.FACE_FRAME, t);
             latest = out;
             StageTimer.stop(StageTimer.Stage.CAPTURE_TOTAL, tCapture);
