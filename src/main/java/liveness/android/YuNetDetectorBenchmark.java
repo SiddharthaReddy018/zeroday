@@ -22,12 +22,16 @@ public final class YuNetDetectorBenchmark {
             for (int i = 0; i < warmupFrames; i++) detector.detect(rgb, width, height);
 
             double[] samples = new double[frames];
+            int stageCount = YuNetFaceDetector.STAGE_NAMES.length;
+            double[][] stageSamples = new double[stageCount][frames];
+            long[] stageNanos = new long[stageCount];
             int framesWithDetections = 0;
             long totalDetections = 0;
             for (int i = 0; i < frames; i++) {
                 long start = System.nanoTime();
-                FaceDetector.Observation observation = detector.detect(rgb, width, height);
+                FaceDetector.Observation observation = detector.detectTimed(rgb, width, height, stageNanos);
                 samples[i] = (System.nanoTime() - start) / 1e6;
+                for (int k = 0; k < stageCount; k++) stageSamples[k][i] = stageNanos[k] / 1e6;
                 if (observation.faceCount > 0) framesWithDetections++;
                 totalDetections += observation.faceCount;
             }
@@ -47,9 +51,34 @@ public final class YuNetDetectorBenchmark {
             out.put("frames_with_detections_on_synthetic_noise", framesWithDetections);
             out.put("detections_on_synthetic_noise_not_accuracy", totalDetections);
             out.put("latency_ms", PadBenchmark.statsMap(LatencyBenchmark.summarize(samples)));
+            out.put("stage_latency_ms", stageStatsMap(YuNetFaceDetector.STAGE_NAMES, stageSamples, samples));
+            out.put("stage_note", "stages are timed inside the measured call; unattributed_mean_ms is "
+                    + "total minus the stage sum (tensor/result close, input validation, timer overhead)");
             out.put("cores", Runtime.getRuntime().availableProcessors());
             return out;
         }
+    }
+
+    /** Per-stage stats, each stage's share of the mean total, and the mean time no stage accounts for. */
+    static Map<String, Object> stageStatsMap(String[] names, double[][] stageSamplesMs, double[] totalMs) {
+        if (names == null || stageSamplesMs == null || totalMs == null || names.length != stageSamplesMs.length) {
+            throw new IllegalArgumentException("stage names and samples must match");
+        }
+        double totalMean = LatencyBenchmark.summarize(totalMs).meanMs;
+        Map<String, Object> out = new LinkedHashMap<>();
+        double stageMeanSum = 0.0;
+        for (int k = 0; k < names.length; k++) {
+            if (stageSamplesMs[k].length != totalMs.length) {
+                throw new IllegalArgumentException("stage sample count must equal total sample count");
+            }
+            LatencyBenchmark.Stats stats = LatencyBenchmark.summarize(stageSamplesMs[k]);
+            Map<String, Object> m = PadBenchmark.statsMap(stats);
+            m.put("share_of_mean_total", totalMean > 0.0 ? stats.meanMs / totalMean : 0.0);
+            out.put(names[k], m);
+            stageMeanSum += stats.meanMs;
+        }
+        out.put("unattributed_mean_ms", totalMean - stageMeanSum);
+        return out;
     }
 
     private static byte[] syntheticRgb(int length) {
