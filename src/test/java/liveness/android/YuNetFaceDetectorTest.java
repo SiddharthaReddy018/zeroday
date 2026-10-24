@@ -1,11 +1,16 @@
 package liveness.android;
 
+import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OrtEnvironment;
+import ai.onnxruntime.OrtSession;
 import liveness.engine.LandmarkLayout;
 import org.junit.jupiter.api.Test;
 
+import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -144,6 +149,41 @@ class YuNetFaceDetectorTest {
                 sum += s;
             }
             assertTrue(sum <= wall, "stage sum cannot exceed the wall time around the call");
+        }
+    }
+
+    @Test
+    void flatExtractionMatchesOrtGetValueOnTheRealModel() throws Exception {
+        assumeTrue(Files.isRegularFile(MODEL), "YuNet model not present: " + MODEL);
+        byte[] rgb = new byte[640 * 480 * 3];
+        for (int i = 0; i < rgb.length; i++) rgb[i] = (byte) ((i * 37) & 0xff);
+        YuNetInputPreprocessor preprocessor = new YuNetInputPreprocessor();
+        preprocessor.prepare(rgb, 640, 480);
+        OrtEnvironment env = OrtEnvironment.getEnvironment();
+        try (YuNetFaceDetector detector = new YuNetFaceDetector(MODEL);
+             OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+            options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
+            try (OrtSession session = env.createSession(Files.readAllBytes(MODEL), options);
+                 OnnxTensor input = OnnxTensor.createTensor(env,
+                         FloatBuffer.wrap(preprocessor.buffer()), new long[]{1, 3, 640, 640});
+                 OrtSession.Result result = session.run(Collections.singletonMap("input", input))) {
+                detector.detect(rgb, 640, 480);
+                float[][] flat = detector.flatOutputsSnapshot();
+                assertEquals(YuNetFaceDetector.OUTPUT_NAMES.length, flat.length);
+                for (int i = 0; i < flat.length; i++) {
+                    String name = YuNetFaceDetector.OUTPUT_NAMES[i];
+                    float[][][] nested = (float[][][]) result.get(name).get().getValue();
+                    int channels = nested[0][0].length;
+                    assertEquals(nested[0].length * channels, flat[i].length);
+                    for (int a = 0; a < nested[0].length; a++) {
+                        for (int c = 0; c < channels; c++) {
+                            assertEquals(Float.floatToRawIntBits(nested[0][a][c]),
+                                    Float.floatToRawIntBits(flat[i][a * channels + c]),
+                                    name + " anchor " + a + " channel " + c);
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package liveness.android;
 
 import ai.onnxruntime.NodeInfo;
 import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OnnxValue;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
@@ -57,12 +58,12 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
     };
     private static final int[] STRIDES = {8, 16, 32};
     private static final int[] CHANNELS = {1, 1, 1, 1, 1, 1, 4, 4, 4, 10, 10, 10};
-    private static final int PLANE_SIZE = INPUT_SIZE * INPUT_SIZE;
 
     private final OrtEnvironment env;
     private final OrtSession session;
     private final String modelSha256;
-    private final float[] inputBuffer = new float[3 * PLANE_SIZE];
+    private final YuNetInputPreprocessor preprocessor = new YuNetInputPreprocessor();
+    private final float[][] flatOutputs = allocateFlatOutputs();
     private boolean closed;
 
     /** Opens only the model whose SHA-256 is pinned by {@link #MODEL_SHA256}. */
@@ -148,22 +149,16 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         }
 
         long t0 = mark(stageNanos);
-        ResizeInfo resize = prepareInput(rgb, width, height);
+        YuNetInputPreprocessor.Resize resize = preprocessor.prepare(rgb, width, height);
         long t1 = mark(stageNanos);
         try (OnnxTensor input = OnnxTensor.createTensor(
-                    env, FloatBuffer.wrap(inputBuffer), new long[]{1, 3, INPUT_SIZE, INPUT_SIZE})) {
+                    env, FloatBuffer.wrap(preprocessor.buffer()), new long[]{1, 3, INPUT_SIZE, INPUT_SIZE})) {
             long t2 = mark(stageNanos);
             try (OrtSession.Result result = session.run(Collections.singletonMap("input", input))) {
                 long t3 = mark(stageNanos);
-                float[][][][] outputs = new float[OUTPUT_NAMES.length][][][];
-                for (int i = 0; i < OUTPUT_NAMES.length; i++) {
-                    String name = OUTPUT_NAMES[i];
-                    outputs[i] = (float[][][]) result.get(name)
-                            .orElseThrow(() -> new IllegalStateException("Missing YuNet output: " + name))
-                            .getValue();
-                }
+                extractOutputs(result);
                 long t4 = mark(stageNanos);
-                Observation observation = decode(outputs, width, height, resize.scaleX, resize.scaleY);
+                Observation observation = decodeFlat(flatOutputs, width, height, resize.scaleX, resize.scaleY);
                 if (stageNanos != null) {
                     long t5 = System.nanoTime();
                     stageNanos[0] = t1 - t0;
@@ -179,51 +174,40 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         }
     }
 
-    private ResizeInfo prepareInput(byte[] rgb, int width, int height) {
-        double scale = Math.min(INPUT_SIZE / (double) width, INPUT_SIZE / (double) height);
-        int resizedWidth = Math.max(1, Math.min(INPUT_SIZE, (int) Math.round(width * scale)));
-        int resizedHeight = Math.max(1, Math.min(INPUT_SIZE, (int) Math.round(height * scale)));
-        double scaleX = resizedWidth / (double) width;
-        double scaleY = resizedHeight / (double) height;
-
-        // The input buffer is reused across frames; clear padding and stale pixels.
-        Arrays.fill(inputBuffer, 0.0f);
-        for (int y = 0; y < resizedHeight; y++) {
-            double sourceY = clamp((y + 0.5) / scaleY - 0.5, 0.0, height - 1.0);
-            int y0 = (int) Math.floor(sourceY);
-            int y1 = Math.min(height - 1, y0 + 1);
-            double fy = sourceY - y0;
-            for (int x = 0; x < resizedWidth; x++) {
-                double sourceX = clamp((x + 0.5) / scaleX - 0.5, 0.0, width - 1.0);
-                int x0 = (int) Math.floor(sourceX);
-                int x1 = Math.min(width - 1, x0 + 1);
-                double fx = sourceX - x0;
-                int pixel = y * INPUT_SIZE + x;
-                int src00 = (y0 * width + x0) * 3;
-                int src10 = (y0 * width + x1) * 3;
-                int src01 = (y1 * width + x0) * 3;
-                int src11 = (y1 * width + x1) * 3;
-
-                // The API input is RGB; the exported YuNet graph expects BGR.
-                inputBuffer[pixel] = (float) interpolate(rgb, src00, src10, src01, src11, 2, fx, fy);
-                inputBuffer[PLANE_SIZE + pixel] =
-                        (float) interpolate(rgb, src00, src10, src01, src11, 1, fx, fy);
-                inputBuffer[2 * PLANE_SIZE + pixel] =
-                        (float) interpolate(rgb, src00, src10, src01, src11, 0, fx, fy);
+    /** Copies each output tensor into its preallocated flat array (bulk copy, no per-row allocation). */
+    private void extractOutputs(OrtSession.Result result) throws OrtException {
+        for (int i = 0; i < OUTPUT_NAMES.length; i++) {
+            String name = OUTPUT_NAMES[i];
+            OnnxValue value = result.get(name)
+                    .orElseThrow(() -> new IllegalStateException("Missing YuNet output: " + name));
+            if (!(value instanceof OnnxTensor)) {
+                throw new IllegalStateException("YuNet output is not a tensor: " + name);
             }
+            FloatBuffer data = ((OnnxTensor) value).getFloatBuffer();
+            float[] dest = flatOutputs[i];
+            if (data == null || data.remaining() != dest.length) {
+                throw new IllegalStateException("Unexpected YuNet output size for " + name);
+            }
+            data.get(dest);
         }
-        return new ResizeInfo(scaleX, scaleY);
     }
 
-    private static double interpolate(byte[] rgb, int p00, int p10, int p01, int p11,
-                                      int channel, double fx, double fy) {
-        double v00 = rgb[p00 + channel] & 0xff;
-        double v10 = rgb[p10 + channel] & 0xff;
-        double v01 = rgb[p01 + channel] & 0xff;
-        double v11 = rgb[p11 + channel] & 0xff;
-        double top = v00 * (1.0 - fx) + v10 * fx;
-        double bottom = v01 * (1.0 - fx) + v11 * fx;
-        return top * (1.0 - fy) + bottom * fy;
+    private static float[][] allocateFlatOutputs() {
+        float[][] flat = new float[OUTPUT_NAMES.length][];
+        for (int i = 0; i < OUTPUT_NAMES.length; i++) flat[i] = new float[flatLength(i)];
+        return flat;
+    }
+
+    private static int flatLength(int outputIndex) {
+        int grid = INPUT_SIZE / STRIDES[outputIndex % 3];
+        return grid * grid * CHANNELS[outputIndex];
+    }
+
+    /** Last extracted flat outputs, copied. Test hook for comparing extraction against ORT's getValue(). */
+    synchronized float[][] flatOutputsSnapshot() {
+        float[][] copy = new float[flatOutputs.length][];
+        for (int i = 0; i < copy.length; i++) copy[i] = flatOutputs[i].clone();
+        return copy;
     }
 
     private static double clamp(double value, double low, double high) {
@@ -239,35 +223,54 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         if (outputs == null || outputs.length != OUTPUT_NAMES.length) {
             throw new IllegalArgumentException("YuNet requires exactly 12 output tensors");
         }
+        float[][] flat = new float[OUTPUT_NAMES.length][];
+        for (int i = 0; i < OUTPUT_NAMES.length; i++) {
+            int grid = INPUT_SIZE / STRIDES[i % 3];
+            int anchors = grid * grid;
+            float[][] tensor = requireTensor(outputs, i, anchors, CHANNELS[i]);
+            float[] values = new float[anchors * CHANNELS[i]];
+            for (int a = 0; a < anchors; a++) {
+                if (tensor[a] == null || tensor[a].length != CHANNELS[i]) {
+                    throw new IllegalArgumentException("Malformed YuNet " + OUTPUT_NAMES[i]
+                            + " row at anchor " + a);
+                }
+                System.arraycopy(tensor[a], 0, values, a * CHANNELS[i], CHANNELS[i]);
+            }
+            flat[i] = values;
+        }
+        return decodeFlat(flat, frameWidth, frameHeight, scaleX, scaleY);
+    }
+
+    /** Decodes flat row-major [anchors x channels] tensors, one array per output in {@link #OUTPUT_NAMES} order. */
+    static Observation decodeFlat(float[][] flat, int frameWidth, int frameHeight,
+                                  double scaleX, double scaleY) {
+        if (flat == null || flat.length != OUTPUT_NAMES.length) {
+            throw new IllegalArgumentException("YuNet requires exactly 12 output tensors");
+        }
         if (frameWidth <= 0 || frameHeight <= 0 || !Double.isFinite(scaleX) || scaleX <= 0.0
                 || !Double.isFinite(scaleY) || scaleY <= 0.0) {
             throw new IllegalArgumentException("Invalid frame dimensions or resize scale");
         }
-
-        float[][][] cls = new float[3][][];
-        float[][][] obj = new float[3][][];
-        float[][][] bbox = new float[3][][];
-        float[][][] kps = new float[3][][];
-        for (int level = 0; level < STRIDES.length; level++) {
-            int grid = INPUT_SIZE / STRIDES[level];
-            int anchors = grid * grid;
-            cls[level] = requireTensor(outputs, level, anchors, CHANNELS[level]);
-            obj[level] = requireTensor(outputs, level + 3, anchors, CHANNELS[level + 3]);
-            bbox[level] = requireTensor(outputs, level + 6, anchors, CHANNELS[level + 6]);
-            kps[level] = requireTensor(outputs, level + 9, anchors, CHANNELS[level + 9]);
+        for (int i = 0; i < OUTPUT_NAMES.length; i++) {
+            if (flat[i] == null || flat[i].length != flatLength(i)) {
+                throw new IllegalArgumentException("Malformed YuNet tensor " + OUTPUT_NAMES[i]
+                        + "; expected " + flatLength(i) + " values");
+            }
         }
 
         List<Candidate> candidates = new ArrayList<>();
         for (int level = 0; level < STRIDES.length; level++) {
             int stride = STRIDES[level];
             int grid = INPUT_SIZE / stride;
+            float[] cls = flat[level];
+            float[] obj = flat[level + 3];
+            float[] bbox = flat[level + 6];
+            float[] kps = flat[level + 9];
             for (int row = 0; row < grid; row++) {
                 for (int col = 0; col < grid; col++) {
                     int index = row * grid + col;
-                    float[] clsRow = row(cls[level], index, 1, "cls");
-                    float[] objRow = row(obj[level], index, 1, "obj");
-                    float clsScore = clsRow[0];
-                    float objScore = objRow[0];
+                    float clsScore = cls[index];
+                    float objScore = obj[index];
                     if (!Float.isFinite(clsScore) || !Float.isFinite(objScore)) continue;
                     clsScore = Math.max(0.0f, Math.min(1.0f, clsScore));
                     objScore = Math.max(0.0f, Math.min(1.0f, objScore));
@@ -277,12 +280,12 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
                     float score = (float) Math.sqrt(clsScore * objScore);
                     if (score < SCORE_THRESHOLD) continue;
 
-                    float[] box = row(bbox[level], index, 4, "bbox");
-                    float[] points = row(kps[level], index, 10, "kps");
-                    float cx = (col + box[0]) * stride;
-                    float cy = (row + box[1]) * stride;
-                    float bw = (float) Math.exp(box[2]) * stride;
-                    float bh = (float) Math.exp(box[3]) * stride;
+                    int b = index * 4;
+                    int k = index * 10;
+                    float cx = (col + bbox[b]) * stride;
+                    float cy = (row + bbox[b + 1]) * stride;
+                    float bw = (float) Math.exp(bbox[b + 2]) * stride;
+                    float bh = (float) Math.exp(bbox[b + 3]) * stride;
                     if (!Float.isFinite(cx) || !Float.isFinite(cy)
                             || !Float.isFinite(bw) || !Float.isFinite(bh) || bw <= 0.0f || bh <= 0.0f) {
                         continue;
@@ -310,8 +313,8 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
                     double[] alignment = new double[10];
                     boolean finitePoints = true;
                     for (int p = 0; p < 5; p++) {
-                        double px = (points[2 * p] + col) * stride / scaleX;
-                        double py = (points[2 * p + 1] + row) * stride / scaleY;
+                        double px = (kps[k + 2 * p] + col) * stride / scaleX;
+                        double py = (kps[k + 2 * p + 1] + row) * stride / scaleY;
                         if (!Double.isFinite(px) || !Double.isFinite(py)) {
                             finitePoints = false;
                             break;
@@ -366,13 +369,6 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
                     + "; expected [1," + anchors + "," + channels + "]");
         }
         return tensor[0];
-    }
-
-    private static float[] row(float[][] tensor, int index, int channels, String name) {
-        if (index < 0 || index >= tensor.length || tensor[index] == null || tensor[index].length != channels) {
-            throw new IllegalArgumentException("Malformed YuNet " + name + " row at anchor " + index);
-        }
-        return tensor[index];
     }
 
     private static double intersectionOverUnion(Candidate a, Candidate b) {
@@ -431,15 +427,6 @@ public final class YuNetFaceDetector implements FaceDetector, AutoCloseable {
         closed = true;
         closeQuietly(session);
         closeEnvironmentQuietly(env);
-    }
-
-    private static final class ResizeInfo {
-        final double scaleX;
-        final double scaleY;
-        ResizeInfo(double scaleX, double scaleY) {
-            this.scaleX = scaleX;
-            this.scaleY = scaleY;
-        }
     }
 
     private static final class Candidate {
