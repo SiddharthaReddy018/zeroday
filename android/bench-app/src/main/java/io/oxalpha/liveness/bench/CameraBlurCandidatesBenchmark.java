@@ -16,6 +16,9 @@ import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.LifecycleRegistry;
 
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
@@ -78,6 +81,8 @@ final class CameraBlurCandidatesBenchmark {
 
         final Map<String, Integer> shapes = new LinkedHashMap<>();
         final int[] count = {0};
+        final byte[][] snapRgb = new byte[1][];
+        final int[] snapDim = new int[7];
         final int[] chromaMismatch = {0};
         final int[] errFrames = {0};
         final int[] cropNull = {0};
@@ -163,6 +168,16 @@ final class CameraBlurCandidatesBenchmark {
                                 } else {
                                     cropNull[0]++;
                                 }
+                            }
+                            if (n == WARMUP + MEASURE / 2) {
+                                snapRgb[0] = rgb.clone();
+                                snapDim[0] = ow;
+                                snapDim[1] = oh;
+                                snapDim[2] = o.bboxX;
+                                snapDim[3] = o.bboxY;
+                                snapDim[4] = o.bboxW;
+                                snapDim[5] = o.bboxH;
+                                snapDim[6] = o.faceCount;
                             }
                             count[0] = n + 1;
                             if (n + 1 >= total) done.countDown();
@@ -282,6 +297,40 @@ final class CameraBlurCandidatesBenchmark {
         File out = new File(dir, "camera_blur_cand_" + label + "_" + t0 + ".json");
         try (FileOutputStream os = new FileOutputStream(out)) {
             os.write(j.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        try {
+            if (snapRgb[0] != null && (long) snapDim[0] * snapDim[1] * 3 <= snapRgb[0].length) {
+                final int snapW = snapDim[0];
+                final int snapH = snapDim[1];
+                final byte[] snapSrc = snapRgb[0];
+                int[] snapPx = new int[snapW * snapH];
+                for (int pxI = 0, pxK = 0; pxI < snapPx.length; pxI++, pxK += 3) {
+                    snapPx[pxI] = 0xFF000000 | ((snapSrc[pxK] & 0xFF) << 16)
+                            | ((snapSrc[pxK + 1] & 0xFF) << 8) | (snapSrc[pxK + 2] & 0xFF);
+                }
+                Bitmap snapBm = Bitmap.createBitmap(snapW, snapH, Bitmap.Config.ARGB_8888);
+                snapBm.setPixels(snapPx, 0, snapW, 0, 0, snapW, snapH);
+                File snapClean = new File(dir, "camera_blur_cand_" + label + "_" + t0 + "_frame.png");
+                try (FileOutputStream snapOs = new FileOutputStream(snapClean)) {
+                    snapBm.compress(Bitmap.CompressFormat.PNG, 100, snapOs);
+                }
+                Canvas snapCv = new Canvas(snapBm);
+                Paint snapPt = new Paint();
+                snapPt.setStyle(Paint.Style.STROKE);
+                snapPt.setStrokeWidth(4f);
+                snapPt.setColor(0xFFFF0000);
+                if (snapDim[6] == 1) {
+                    snapCv.drawRect(snapDim[2], snapDim[3], snapDim[2] + snapDim[4], snapDim[3] + snapDim[5], snapPt);
+                }
+                File snapBox = new File(dir, "camera_blur_cand_" + label + "_" + t0 + "_box.png");
+                try (FileOutputStream snapOs2 = new FileOutputStream(snapBox)) {
+                    snapBm.compress(Bitmap.CompressFormat.PNG, 100, snapOs2);
+                }
+                Log.i(BenchRunner.TAG, "snapshot saved " + snapClean.getAbsolutePath()
+                        + " faceCount=" + snapDim[6]);
+            }
+        } catch (Exception snapEx) {
+            Log.w(BenchRunner.TAG, "snapshot failed " + snapEx);
         }
         Log.i(BenchRunner.TAG, "camera blur candidates saved " + out.getAbsolutePath());
         return "saved: " + out.getAbsolutePath() + "\n" + j.substring(0, Math.min(j.length(), 3000));
