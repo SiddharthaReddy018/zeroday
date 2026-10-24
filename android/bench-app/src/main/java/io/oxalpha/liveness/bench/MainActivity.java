@@ -52,6 +52,8 @@ public final class MainActivity extends Activity {
         addBlurCandJob("Blur cand: defocused", "cand_defocused");
         addBlurCandJob("Blur cand: bright_light", "cand_bright_light");
         addBlurCandJob("Blur cand: plain_wall", "cand_plain_wall");
+        addGateJob("Relative gate live: flap OFF (30 warmup + 300)", "flapoff");
+        addGateJob("Relative gate live: flap ON (30 warmup + 300)", "flapon");
         addJob("Pipeline + REAL composite, 720x720 rot270 stride 768: INT8 (face_frame_720_sensor.png)", () -> CameraShapedPipelineBenchmark.run(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("PAD model only: INT8", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("Per-frame pipeline, lockstep: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
@@ -68,6 +70,16 @@ public final class MainActivity extends Activity {
                 return "Camera permission requested. Grant it, then tap the button again.";
             }
             return CameraBlurCandidatesBenchmark.run(this, condition);
+        });
+    }
+
+    private void addGateJob(String title, String condition) {
+        addJob(title, () -> {
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.CAMERA}, 1));
+                return "Camera permission requested. Grant it, then tap the button again.";
+            }
+            return CameraRelativeGateBenchmark.run(this, condition);
         });
     }
 
