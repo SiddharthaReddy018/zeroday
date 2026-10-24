@@ -59,6 +59,37 @@ public final class BlurCandidates {
         return new double[]{var, norm, sharpRatio(g), mean};
     }
 
+    /**
+     * Lean whole-frame metric: Laplacian variance / (mean^2 + 1) on the 112x112 box downsample.
+     * Same value as compute(rgb, w, h, 0, 0, w, h)[LAP_VAR_NORM] without the re-blur ratio.
+     * Returns -1.0 if the input is unusable.
+     */
+    public static double fullFrameNorm(byte[] rgb, int w, int h) {
+        if (rgb == null || w < MIN_BBOX || h < MIN_BBOX || (long) w * h * 3 > rgb.length) return -1.0;
+        float[] g = cropLuma(rgb, w, 0, 0, w, h);
+        int n = SIDE;
+        double sum = 0;
+        for (int i = 0; i < g.length; i++) sum += g[i];
+        double mean = sum / g.length;
+        double lsum = 0, lsq = 0;
+        long ln = 0;
+        for (int y = 1; y < n - 1; y++) {
+            for (int x = 1; x < n - 1; x++) {
+                int i = y * n + x;
+                double lap = 4.0 * g[i] - g[i - 1] - g[i + 1] - g[i - n] - g[i + n];
+                lsum += lap;
+                lsq += lap * lap;
+                ln++;
+            }
+        }
+        double var = 0;
+        if (ln > 0) {
+            double m = lsum / ln;
+            var = Math.max(0.0, lsq / ln - m * m);
+        }
+        return var / (mean * mean + 1.0);
+    }
+
     private static float[] cropLuma(byte[] rgb, int w, int x0, int y0, int cw, int ch) {
         int n = SIDE;
         float[] out = new float[n * n];
