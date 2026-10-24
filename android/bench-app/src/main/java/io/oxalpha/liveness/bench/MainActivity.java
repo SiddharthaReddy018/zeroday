@@ -34,7 +34,9 @@ public final class MainActivity extends Activity {
         root.setPadding(24, 24, 24, 24);
         buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.VERTICAL);
-        root.addView(buttons);
+        ScrollView btnScroll = new ScrollView(this);
+        btnScroll.addView(buttons);
+        root.addView(btnScroll, new LinearLayout.LayoutParams(-1, 0, 3f));
         out = new TextView(this);
         out.setTextSize(11f);
         out.setTypeface(android.graphics.Typeface.MONOSPACE);
@@ -42,7 +44,7 @@ public final class MainActivity extends Activity {
         out.setText("Idle. Keep the phone cool, unplugged, screen on. One job at a time.");
         ScrollView sv = new ScrollView(this);
         sv.addView(out);
-        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 2f));
         setContentView(root);
 
         addJob("YuNet detector only: ORT CPU", () -> BenchRunner.runYuNetDetector(this));
@@ -54,6 +56,7 @@ public final class MainActivity extends Activity {
         addBlurCandJob("Blur cand: plain_wall", "cand_plain_wall");
         addGateJob("Relative gate live: flap OFF (30 warmup + 300)", "flapoff");
         addGateJob("Relative gate live: flap ON (30 warmup + 300)", "flapon");
+        addJob("fullFrameNorm latency (720x720 rot270 stride 768)", () -> FullNormLatencyBenchmark.run(this));
         addJob("Pipeline + REAL composite, 720x720 rot270 stride 768: INT8 (face_frame_720_sensor.png)", () -> CameraShapedPipelineBenchmark.run(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("PAD model only: INT8", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("Per-frame pipeline, lockstep: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
