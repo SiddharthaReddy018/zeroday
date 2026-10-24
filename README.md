@@ -22,7 +22,9 @@ MOSIP/
 │   └── README-M4.md                 # Milestone 4 Android integration & benchmark report
 │
 └── zerodayjunk-/                    # Documentation repository (tracked separately)
-    └── docs/                        # Specifications, test reports, architecture decisions & guides
+    ├── TEST_REPORT.md, TECHNICAL_DESIGN.md, INTEGRATION_GUIDE.md, UX_GUIDE.md, DEMO_SCRIPT.md
+    ├── design-notes/                # Blur-gate notes and final report
+    └── bench-results/               # Raw-run notes and results per bench session
 ```
 
 > **Note:** The `docs/` folder in `face-liveness-pad` contains localized working copies and is strictly excluded from git tracking (`.gitignore`) to maintain repository hygiene.
@@ -105,7 +107,38 @@ cd android
 
 ---
 
+## Android Bench App (device run)
+Device used so far: Nothing A001 (MT6878, Android 15), one phone only. Release build.
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+cd android
+./gradlew :bench-app:installRelease
+```
+Bench outputs are written on the phone under
+`/sdcard/Android/data/io.oxalpha.liveness.bench/files/bench/`.
+`adb run-as` does not work on the release build; pull files with `adb pull`.
+
+## Test Results
+- Java suite: see "Running the Java Test Suite" above. Re-run `mvn test` to confirm the count on your machine.
+- Device bench results, thermal readings and the relative blur-gate findings are in the documentation repository
+  (https://github.com/SiddharthaReddy018/zerodayjunk-): `bench-results/` and `design-notes/`.
+- The relative blur gate is additive, default off, and not enabled by the app. Its constants
+  (window 30, drop 2.0, y shift 1.5) are candidates, not fitted values.
+
+## Limitations (Not verified)
+- Only one phone, one lighting setup family and a few distances were measured. Other devices: not tested.
+- Attack accuracy on real presentation attacks for the relative blur gate: not measured.
+- Detector concurrent cost, signing integration, UI mapping of reason strings, and the
+  `:liveness-android` compile in the full app: not verified in the bench sessions.
+- Relative gate design holes: no reset after LOST or BLUR; the first 30 fed frames are blocked;
+  a session that starts blurred is not caught; honest users changing light can be rejected;
+  sessions with no samples bypass the check.
+- ISO/IEC 30107-3 and CEN/TS 18099 wording in this README describes the metrics the harness computes.
+  It is not a certification claim.
+
+---
+
 ## References & Further Reading
-- [README-M4.md](file:///Users/k.siddharthareddy/Documents/MOSIP/face-liveness-pad/README-M4.md): Milestone 4 Android integration details, benchmark protocols, and wiring recipes.
+- [README-M4.md](README-M4.md): Milestone 4 Android integration details, benchmark protocols, and wiring recipes.
 - `ui-contract/events-schema.json`: Strict JSON schema contract for UI platform channel events.
 - MOSIP Biometric Device Specification 1.1.5 & Android SBI Draft 0.9.
