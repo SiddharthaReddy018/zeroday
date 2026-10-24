@@ -10,6 +10,7 @@ import liveness.device.MockDeviceAdapter;
 import liveness.engine.MiniFasNetScorer;
 import liveness.engine.SameFaceChecker;
 import liveness.flow.RetryRateLimiter;
+import liveness.flow.LivenessSession;
 import liveness.policy.LivenessConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -138,5 +139,55 @@ class RelativeBlurSessionTest {
     void flagOnWithNoValidSamplesBypasses() {
         LivenessService.LivenessResult r = run(true, new NormDevice(1_000_000, -1.0, -1.0));
         assertTrue(r.isSuccess(), "no valid full-frame sample: relative check skipped: " + r.verdict());
+    }
+
+    /** Drives processFrame directly so the audit trail (the only place the reason lands) can be read. */
+    private String driveToTrail(boolean relative, NormDevice dev, String[] finalState) throws Exception {
+        LivenessConfig cfg = LivenessConfig.builder()
+                .minQualifyingFrames(30)
+                .activeEnabled(false)
+                .maxRetries(3)
+                .relativeBlurEnabled(relative)
+                .relativeBlurWindow(10)
+                .build();
+        MiniFasNetScorer scorer = new MiniFasNetScorer(null);
+        scorer.setStubScore(85);
+        SameFaceChecker same = new SameFaceChecker(0.6);
+        same.setStubResult(true);
+        LivenessService svc = new LivenessService(cfg, scorer, same,
+                new ChallengeGenerator(ChallengeGenerator.DEFAULT_POOL, new ArrayList<>()),
+                new RetryRateLimiter(3), new EcdsaSignerStub());
+        LivenessSession s = svc.startSession("subject-blur", dev, "mu-blur",
+                LivenessService.WorkflowType.RESIDENT_REGISTRATION);
+        s.start();
+        s.openDevice();
+        for (int i = 0; i < 600; i++) {
+            String st = s.currentState().name();
+            if (!st.equals("POSITIONING") && !st.equals("PASSIVE") && !st.equals("CHALLENGE_WAIT")) break;
+            FaceFrame f = dev.captureFrame();
+            if (f != null) s.processFrame(f);
+        }
+        finalState[0] = s.currentState().name();
+        return s.exportAuditTrail();
+    }
+
+    @Test
+    @Timeout(60)
+    void flagOnBlurAfterBaselineIsRejectedForTheBlurReason() throws Exception {
+        String[] st = new String[1];
+        String trail = driveToTrail(true, new NormDevice(15, 0.20, 0.06), st);
+        assertTrue(trail.contains("guide.quality.blur_relative"),
+                "audit trail must carry the blur reason; final state " + st[0]);
+        assertNotEquals("SUCCESS", st[0]);
+    }
+
+    @Test
+    @Timeout(60)
+    void flagOnSteadySharpHasNoBlurReasonAndLeavesPositioning() throws Exception {
+        String[] st = new String[1];
+        String trail = driveToTrail(true, new NormDevice(1_000_000, 0.20, 0.20), st);
+        assertFalse(trail.contains("blur_relative"), "steady sharp must not log the blur reason");
+        assertFalse(trail.contains("light_unsteady"), "steady sharp must not log the light reason");
+        assertNotEquals("POSITIONING", st[0], "steady sharp must get past warm-up");
     }
 }
