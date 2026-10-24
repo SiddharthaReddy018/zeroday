@@ -78,13 +78,18 @@ final class CameraSessionRelativeBlurBenchmark {
     }
 
     static String run(Context ctx, String label) throws Exception {
+        return run(ctx, label, BLUR_OVERRIDE);
+    }
+
+    /** blurOverride null = LivenessConfig default (real QualityGate threshold). */
+    static String run(Context ctx, String label, Double blurOverride) throws Exception {
         final Context app = ctx.getApplicationContext();
         final File yunetModel = BenchRunner.copyAsset(app, "face_detection_yunet.onnx");
         final File padModel = BenchRunner.copyAsset(app, PAD);
         final LivenessConfig cfg = LivenessConfig.builder()
                 .minQualifyingFrames(Integer.MAX_VALUE / 2)
-                .blurMinVariance(BLUR_OVERRIDE)
                 .relativeBlurEnabled(true)
+                .blurMinVariance(blurOverride != null ? blurOverride : LivenessConfig.defaultConfig().blurMinVariance())
                 .build();
 
         Map<String, Object> out = BenchRunner.envelope(app, "camera_session_relative_blur:" + label);
@@ -198,7 +203,8 @@ final class CameraSessionRelativeBlurBenchmark {
         out.put("condition_label", label);
         out.put("what", "REAL LivenessSession + real PAD + real composite detector + live front camera, relativeBlurEnabled(true); "
                 + "no verdict can fire (minQualifyingFrames huge); QualityGate blur threshold lowered, NOT representative; candidate constants");
-        out.put("blur_gate_override", BLUR_OVERRIDE);
+        out.put("blur_gate_override", blurOverride);
+        out.put("blur_min_variance_used", cfg.blurMinVariance());
         out.put("relative_blur_window", cfg.relativeBlurWindow());
         out.put("relative_blur_drop_factor", cfg.relativeBlurDropFactor());
         out.put("relative_blur_y_shift_factor", cfg.relativeBlurYShiftFactor());
