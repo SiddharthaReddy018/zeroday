@@ -127,6 +127,13 @@ public final class PipelineBenchmark {
                 producer.start();
             }
 
+            // Diagnostic only: same gate and thresholds as LivenessSession, evaluated on each measured frame so a
+            // sanity failure can name the rejecting check.
+            liveness.engine.QualityGate diagGate = new liveness.engine.QualityGate(
+                    config.blurMinVariance(), config.brightnessMin(), config.brightnessMax(),
+                    config.faceSizeMinPx(), config.poseMaxYawDeg(), config.poseMaxPitchDeg());
+            Map<String, Integer> gateReasons = new LinkedHashMap<>();
+            String firstRejectStats = null;
             long lockstepTs = 1_000_000L;
             int seq = 0;
             try {
@@ -141,6 +148,22 @@ public final class PipelineBenchmark {
                     long t0 = System.nanoTime();
                     liveness.core.FaceFrame ff = camera.captureFrame();
                     LivenessState s = session.processFrame(ff);
+                    if (i >= warmupFrames) {
+                        liveness.engine.QualityGate.QualityResult gr = diagGate.evaluate(
+                                new liveness.engine.QualityGate.RawFrameData(
+                                        ff.laplacianVariance(), ff.brightnessMean(),
+                                        ff.faceBboxWidth(), ff.faceBboxHeight(),
+                                        ff.yawDeg(), ff.pitchDeg(), ff.rollDeg(),
+                                        ff.faceCount(), ff.widthPx(), ff.heightPx()));
+                        gateReasons.merge(gr.passed() ? "pass" : gr.failureReason(), 1, Integer::sum);
+                        if (!gr.passed() && firstRejectStats == null) {
+                            firstRejectStats = String.format(Locale.ROOT,
+                                    "frame %d faceCount=%d bbox=%dx%d yaw=%.2f pitch=%.2f roll=%.2f brightness=%.2f laplacianVar=%.2f frame=%dx%d",
+                                    i, ff.faceCount(), ff.faceBboxWidth(), ff.faceBboxHeight(),
+                                    ff.yawDeg(), ff.pitchDeg(), ff.rollDeg(), ff.brightnessMean(),
+                                    ff.laplacianVariance(), ff.widthPx(), ff.heightPx());
+                        }
+                    }
                     long t1 = System.nanoTime();
                     if (s.isTerminal()) throw new IllegalStateException("session ended early at frame " + i + ": " + s
                             + " (numbers would not describe the full path)");
@@ -182,7 +205,8 @@ public final class PipelineBenchmark {
             out.put("pad_infer_calls", padCount);
             if (padCount != frames || procCount != frames) {
                 throw new IllegalStateException("sanity failed: PAD_INFER=" + padCount + " PROCESS_TOTAL=" + procCount
-                        + " expected " + frames + "; frames were rejected before scoring (quality/integrity) - result invalid");
+                        + " expected " + frames + "; frames were rejected before scoring (quality/integrity) - result invalid; "
+                        + gateDiag(gateReasons, firstRejectStats, config));
             }
 
             Map<String, Object> stages = new LinkedHashMap<>();
@@ -235,6 +259,14 @@ public final class PipelineBenchmark {
             }
             return out;
         }
+    }
+
+    private static String gateDiag(Map<String, Integer> reasons, String firstReject, LivenessConfig c) {
+        return "gate diagnostic (measured frames): reasons=" + reasons
+                + " thresholds{blurVar>=" + c.blurMinVariance() + " brightness " + c.brightnessMin() + ".." + c.brightnessMax()
+                + " faceSizePx>=" + c.faceSizeMinPx() + " |yaw|<=" + c.poseMaxYawDeg() + " |pitch|<=" + c.poseMaxPitchDeg() + "}"
+                + " firstRejected={" + firstReject + "}"
+                + (reasons.containsKey("pass") ? " NOTE: some frames passed the gate, so the rejection is NOT only the gate" : "");
     }
 
     private static YuvFrame[] syntheticPool(int width, int height, int rotation) {
