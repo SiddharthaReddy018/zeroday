@@ -36,6 +36,10 @@ public final class LivenessConfig {
 
     // --- Uncalibrated action and quality seeds (HANDOFF-2 R12, AUDIT_TODO C1) ---
     private final double blurMinVariance;
+    private final boolean relativeBlurEnabled;
+    private final int relativeBlurWindow;
+    private final double relativeBlurDropFactor;
+    private final double relativeBlurYShiftFactor;
     private final double brightnessMin;
     private final double brightnessMax;
     private final double earBlinkThreshold;
@@ -76,6 +80,10 @@ public final class LivenessConfig {
         this.poseMaxPitchDeg = b.poseMaxPitchDeg;
         this.minQualifyingFrames = b.minQualifyingFrames;
         this.blurMinVariance = b.blurMinVariance;
+        this.relativeBlurEnabled = b.relativeBlurEnabled;
+        this.relativeBlurWindow = b.relativeBlurWindow;
+        this.relativeBlurDropFactor = b.relativeBlurDropFactor;
+        this.relativeBlurYShiftFactor = b.relativeBlurYShiftFactor;
         this.brightnessMin = b.brightnessMin;
         this.brightnessMax = b.brightnessMax;
         this.earBlinkThreshold = b.earBlinkThreshold;
@@ -110,6 +118,10 @@ public final class LivenessConfig {
     public int poseMaxPitchDeg() { return poseMaxPitchDeg; }
     public int minQualifyingFrames() { return minQualifyingFrames; }
     public double blurMinVariance() { return blurMinVariance; }
+    public boolean relativeBlurEnabled() { return relativeBlurEnabled; }
+    public int relativeBlurWindow() { return relativeBlurWindow; }
+    public double relativeBlurDropFactor() { return relativeBlurDropFactor; }
+    public double relativeBlurYShiftFactor() { return relativeBlurYShiftFactor; }
     public double brightnessMin() { return brightnessMin; }
     public double brightnessMax() { return brightnessMax; }
     public double earBlinkThreshold() { return earBlinkThreshold; }
@@ -159,6 +171,10 @@ public final class LivenessConfig {
         private int poseMaxPitchDeg = 30;
         private int minQualifyingFrames = 5;
         private double blurMinVariance = 100.0;
+        private boolean relativeBlurEnabled = false;
+        private int relativeBlurWindow = 30;
+        private double relativeBlurDropFactor = 2.0;
+        private double relativeBlurYShiftFactor = 1.5;
         private double brightnessMin = 40.0;
         private double brightnessMax = 250.0;
         private double earBlinkThreshold = 0.2;
@@ -190,6 +206,10 @@ public final class LivenessConfig {
         public Builder poseMaxYawDeg(int v)            { this.poseMaxYawDeg = v; return this; }
         public Builder poseMaxPitchDeg(int v)          { this.poseMaxPitchDeg = v; return this; }
         public Builder minQualifyingFrames(int v)      { this.minQualifyingFrames = v; return this; }
+        public Builder relativeBlurEnabled(boolean v)       { this.relativeBlurEnabled = v; return this; }
+        public Builder relativeBlurWindow(int v)            { this.relativeBlurWindow = v; return this; }
+        public Builder relativeBlurDropFactor(double v)     { this.relativeBlurDropFactor = v; return this; }
+        public Builder relativeBlurYShiftFactor(double v)   { this.relativeBlurYShiftFactor = v; return this; }
         public Builder blurMinVariance(double v)       { this.blurMinVariance = v; return this; }
         public Builder brightnessMin(double v)         { this.brightnessMin = v; return this; }
         public Builder brightnessMax(double v)         { this.brightnessMax = v; return this; }
