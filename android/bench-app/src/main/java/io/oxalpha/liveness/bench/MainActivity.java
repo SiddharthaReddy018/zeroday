@@ -1,6 +1,8 @@
 package io.oxalpha.liveness.bench;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -46,6 +48,10 @@ public final class MainActivity extends Activity {
         addJob("YuNet detector only: ORT CPU", () -> BenchRunner.runYuNetDetector(this));
         addJob("Composite: YuNet + ML Kit (face_frame.png)", () -> CompositeLatencyBenchmark.run(this));
         addJob("Pipeline + REAL composite, lockstep: INT8 (face_frame.png)", () -> CompositePipelineBenchmark.run(this, "MiniFASNetV2-SE-int8.onnx"));
+        addBlurCandJob("Blur cand: sharp_textured", "cand_sharp_textured");
+        addBlurCandJob("Blur cand: defocused", "cand_defocused");
+        addBlurCandJob("Blur cand: bright_light", "cand_bright_light");
+        addBlurCandJob("Blur cand: plain_wall", "cand_plain_wall");
         addJob("Pipeline + REAL composite, 720x720 rot270 stride 768: INT8 (face_frame_720_sensor.png)", () -> CameraShapedPipelineBenchmark.run(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("PAD model only: INT8", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE-int8.onnx"));
         addJob("Per-frame pipeline, lockstep: INT8", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE-int8.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
@@ -53,6 +59,16 @@ public final class MainActivity extends Activity {
         addJob("PAD model only: FP32", () -> BenchRunner.runPad(this, "MiniFASNetV2-SE.onnx"));
         addJob("Per-frame pipeline, lockstep: FP32", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE.onnx", liveness.android.PipelineBenchmark.Mode.LOCKSTEP));
         addJob("Per-frame pipeline, paced 30 fps: FP32", () -> BenchRunner.runPipeline(this, "MiniFASNetV2-SE.onnx", liveness.android.PipelineBenchmark.Mode.PACED));
+    }
+
+    private void addBlurCandJob(String title, String condition) {
+        addJob(title, () -> {
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.CAMERA}, 1));
+                return "Camera permission requested. Grant it, then tap the button again.";
+            }
+            return CameraBlurCandidatesBenchmark.run(this, condition);
+        });
     }
 
     private void addJob(String label, Callable<String> job) {
