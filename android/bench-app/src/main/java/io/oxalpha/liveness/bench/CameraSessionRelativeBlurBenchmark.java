@@ -37,6 +37,7 @@ import liveness.core.FaceFrame;
 import liveness.crypto.EcdsaSignerStub;
 import liveness.device.DeviceException;
 import liveness.engine.MiniFasNetScorer;
+import liveness.engine.QualityGate;
 import liveness.engine.SameFaceChecker;
 import liveness.flow.LivenessSession;
 import liveness.flow.LivenessState;
@@ -97,6 +98,10 @@ final class CameraSessionRelativeBlurBenchmark {
 
         final StringBuilder states = new StringBuilder();
         final StringBuilder norms = new StringBuilder();
+        final StringBuilder laps = new StringBuilder();
+        final Map<String, Integer> reasonCounts = new LinkedHashMap<>();
+        final QualityGate probeGate = new QualityGate(cfg.blurMinVariance(), cfg.brightnessMin(),
+                cfg.brightnessMax(), cfg.faceSizeMinPx(), cfg.poseMaxYawDeg(), cfg.poseMaxPitchDeg());
         final Map<String, Integer> stateCounts = new LinkedHashMap<>();
         String error = null;
         String endedState = null;
@@ -163,6 +168,12 @@ final class CameraSessionRelativeBlurBenchmark {
                 try {
                     ff = adapter.captureFrame();
                     captured++;
+                    QualityGate.QualityResult pr = probeGate.evaluate(new QualityGate.RawFrameData(
+                            ff.laplacianVariance(), ff.brightnessMean(), ff.faceBboxWidth(), ff.faceBboxHeight(),
+                            ff.yawDeg(), ff.pitchDeg(), ff.rollDeg(), ff.faceCount(), ff.widthPx(), ff.heightPx()));
+                    reasonCounts.merge(pr.passed() ? "pass" : pr.failureReason(), 1, Integer::sum);
+                    if (captured > 1) laps.append(',');
+                    laps.append(String.format(Locale.ROOT, "%.1f", ff.laplacianVariance()));
                     s = session.processFrame(ff);
                 } catch (DeviceException e) {
                     error = e.toString();
@@ -222,6 +233,9 @@ final class CameraSessionRelativeBlurBenchmark {
         out.put("trail_count_relative_blur_warmup", count(trail, "relative_blur_warmup"));
         out.put("trail_count_quality_dropped", count(trail, "QUALITY_DROPPED"));
         out.put("trail_count_quality_ok", count(trail, "QUALITY_OK"));
+        out.put("probe_quality_reason_counts", new LinkedHashMap<String, Object>(reasonCounts));
+        out.put("probe_laplacian_per_frame_csv", laps.toString());
+        out.put("probe_note", "Independent QualityGate evaluated on every captured frame before processFrame, same config; counts are per captured frame, not from the session audit trail.");
         Log.i(BenchRunner.TAG, "session relative gate saving " + label);
         return BenchRunner.save(app, "camera_session_relative_blur_" + label, out);
     }
