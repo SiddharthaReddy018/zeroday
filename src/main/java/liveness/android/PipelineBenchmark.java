@@ -49,7 +49,28 @@ public final class PipelineBenchmark {
     public static Map<String, Object> run(Path padModel, Signer signer, FaceEmbedder embedder, Mode mode,
                                           int width, int height, int rotation, int fps,
                                           int warmupFrames, int frames) throws Exception {
+        return runWith(padModel, signer, embedder, mode, null, null, null, null,
+                width, height, rotation, fps, warmupFrames, frames);
+    }
+
+    /**
+     * Same path as {@link #run}, optionally with a REAL detector and a caller-built frame pool. Both must be given
+     * together. The pool must hold one geometry (a size change raises RESOLUTION_CHANGE) and frames whose content
+     * digests differ from their neighbours (byte-identical consecutive frames raise FROZEN).
+     * width/height/rotation are used for the synthetic pool only.
+     */
+    public static Map<String, Object> runWith(Path padModel, Signer signer, FaceEmbedder embedder, Mode mode,
+                                              FaceDetector detector, String detectorLabel,
+                                              YuvFrame[] framePool, String frameLabel,
+                                              int width, int height, int rotation, int fps,
+                                              int warmupFrames, int frames) throws Exception {
         if (frames < BLOCKS) throw new IllegalArgumentException("frames must be >= " + BLOCKS);
+        if ((detector == null) != (framePool == null)) {
+            throw new IllegalArgumentException("detector and framePool must be given together");
+        }
+        if (detector != null && (detectorLabel == null || frameLabel == null || framePool.length == 0)) {
+            throw new IllegalArgumentException("detectorLabel, frameLabel and a non-empty framePool are required");
+        }
         if (fps < 1) throw new IllegalArgumentException("fps");
         final long expectedIntervalMs = CameraXDeviceAdapter.DEFAULT_EXPECTED_INTERVAL_MS;
         try (MiniFasNetScorer scorer = new MiniFasNetScorer(padModel)) {
@@ -63,7 +84,7 @@ public final class PipelineBenchmark {
 
             FaceDetector fixedBox = (rgb, w, h) ->
                     new FaceDetector.Observation(1, w / 4, h / 4, w / 2, h / 2, 0.0, 0.0, 0.0, null);
-            CameraXDeviceAdapter camera = new CameraXDeviceAdapter("bench-cam", fixedBox,
+            CameraXDeviceAdapter camera = new CameraXDeviceAdapter("bench-cam", detector != null ? detector : fixedBox,
                     CameraXDeviceAdapter.DEFAULT_QUEUE_CAPACITY, CameraXDeviceAdapter.DEFAULT_FRAME_TIMEOUT_MS,
                     expectedIntervalMs);
             LivenessSession session = service.startBenchmarkSession("bench-subject", camera, "bench-machine", LivenessService.WorkflowType.RESIDENT_REGISTRATION);
@@ -71,10 +92,7 @@ public final class PipelineBenchmark {
             LivenessState st = session.openDevice();
             if (st.isTerminal()) throw new IllegalStateException("session did not open: " + st);
 
-            YuvFrame[] pool = new YuvFrame[FRAME_POOL];
-            for (int i = 0; i < pool.length; i++) {
-                pool[i] = BenchInput.syntheticYuv(width, height, rotation, 0L, INPUT_SEED * 1000 + i);
-            }
+            YuvFrame[] pool = framePool != null ? framePool : syntheticPool(width, height, rotation);
 
             List<Double> serialMs = new ArrayList<>();
             List<Double> e2eMs = new ArrayList<>();
@@ -90,7 +108,7 @@ public final class PipelineBenchmark {
                     long next = System.nanoTime();
                     for (int i = 0; i < total + 20 && !stop.get(); i++) {
                         long ts = System.currentTimeMillis() - baseMs + 1_000_000L;
-                        YuvFrame src = pool[i % FRAME_POOL];
+                        YuvFrame src = pool[i % pool.length];
                         YuvFrame f = new YuvFrame(src.width, src.height, src.y, src.u, src.v, src.yRowStride,
                                 src.uvRowStride, src.uvPixelStride, src.rotationDegrees, ts);
                         arrival.put(ts, f.arrivalNanos);
@@ -115,7 +133,7 @@ public final class PipelineBenchmark {
                 for (int i = 0; i < total; i++) {
                     if (i == warmupFrames) StageTimer.enable(frames + 16);
                     if (mode == Mode.LOCKSTEP) {
-                        YuvFrame src = pool[seq++ % FRAME_POOL];
+                        YuvFrame src = pool[seq++ % pool.length];
                         lockstepTs += 33;
                         camera.onYuvFrame(new YuvFrame(src.width, src.height, src.y, src.u, src.v, src.yRowStride,
                                 src.uvRowStride, src.uvPixelStride, src.rotationDegrees, lockstepTs));
@@ -147,9 +165,12 @@ public final class PipelineBenchmark {
             out.put("pad_model", padModel.getFileName().toString());
             out.put("pad_model_version", scorer.modelVersion());
             out.put("runtime", MiniFasNetScorer.RUNTIME_DESCRIPTION);
-            out.put("frame", width + "x" + height + " YUV_420_888, rotation " + rotation + ", synthetic noise, pool " + FRAME_POOL);
-            out.put("detector", "FIXED BOX (no real detector; detector cost NOT included)");
-            out.put("not_measured", "face detector, SFace embedding, camera/ImageProxy copy, UI, signing");
+            out.put("frame", frameLabel != null ? frameLabel
+                    : width + "x" + height + " YUV_420_888, rotation " + rotation + ", synthetic noise, pool " + FRAME_POOL);
+            out.put("detector", detectorLabel != null ? detectorLabel
+                    : "FIXED BOX (no real detector; detector cost NOT included)");
+            out.put("not_measured", detector != null ? "SFace embedding, camera/ImageProxy copy, UI, signing"
+                    : "face detector, SFace embedding, camera/ImageProxy copy, UI, signing");
             out.put("cores", Runtime.getRuntime().availableProcessors());
             out.put("warmup_frames", warmupFrames);
             out.put("frames", frames);
@@ -214,6 +235,14 @@ public final class PipelineBenchmark {
             }
             return out;
         }
+    }
+
+    private static YuvFrame[] syntheticPool(int width, int height, int rotation) {
+        YuvFrame[] pool = new YuvFrame[FRAME_POOL];
+        for (int i = 0; i < pool.length; i++) {
+            pool[i] = BenchInput.syntheticYuv(width, height, rotation, 0L, INPUT_SEED * 1000 + i);
+        }
+        return pool;
     }
 
     private static double[] toArray(List<Double> l) {
