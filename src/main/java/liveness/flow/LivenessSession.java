@@ -257,7 +257,9 @@ public final class LivenessSession {
                 frame.rollDeg(),
                 frame.faceCount(),
                 frame.widthPx(),
-                frame.heightPx());
+                frame.heightPx(),
+                frame.faceBboxX(),
+                frame.faceBboxY());
 
         final long tQuality = liveness.android.StageTimer.start();
         QualityGate.QualityResult qr = qualityGate.evaluate(rawData);
