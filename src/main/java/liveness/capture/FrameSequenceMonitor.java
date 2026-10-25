@@ -25,6 +25,10 @@ public class FrameSequenceMonitor {
     private final int freezeThreshold;
     private final int loopMinSegmentMotionBits;
     private final List<FrameFingerprint> buffer;
+    /** True until the first valid inter-frame interval is seen. Skips the TIMESTAMP_GAP check on
+     *  the very first pair so a cold-start camera (whose first two frames arrive after a long idle)
+     *  does not immediately fail with IAD_FAILURE: TIMESTAMP_GAP. */
+    private boolean warmingUp = true;
 
     public FrameSequenceMonitor(int windowSize, long expectedIntervalMs) {
         this(windowSize, expectedIntervalMs, 5, LOOP_HAMMING_THRESHOLD, Math.min(windowSize, 5),
@@ -70,8 +74,15 @@ public class FrameSequenceMonitor {
             }
 
             if (fp.getTimestampMs() - last.getTimestampMs() > 2 * expectedIntervalMs) {
-                return Optional.of(IntegrityViolation.TIMESTAMP_GAP);
+                // Allow a one-time large gap on the very first inter-frame check when the camera
+                // was idle for more than 5 seconds (cold-start). Mid-session gaps are always rejected.
+                boolean coldStart = warmingUp
+                        && (fp.getTimestampMs() - last.getTimestampMs() > 5000L);
+                if (!coldStart) {
+                    return Optional.of(IntegrityViolation.TIMESTAMP_GAP);
+                }
             }
+            warmingUp = false;
         }
 
         buffer.add(fp);

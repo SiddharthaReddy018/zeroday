@@ -57,6 +57,7 @@ public final class LivenessConfig {
     private final int freezeHammingThreshold;
     private final int loopMinSegmentMotionBits;
     private final boolean loopReplayHardFail;
+    private final boolean forceChallenge;
     private final long rcaptureFreshnessWindowMs;
 
 
@@ -99,6 +100,7 @@ public final class LivenessConfig {
         this.freezeHammingThreshold = b.freezeHammingThreshold;
         this.loopMinSegmentMotionBits = b.loopMinSegmentMotionBits;
         this.loopReplayHardFail = b.loopReplayHardFail;
+        this.forceChallenge = b.forceChallenge;
         this.rcaptureFreshnessWindowMs = b.rcaptureFreshnessWindowMs;
         this.configVersion = b.configVersion;
         this.challengeProfile = b.challengeProfile;
@@ -139,6 +141,8 @@ public final class LivenessConfig {
     public int loopMinSegmentMotionBits() { return loopMinSegmentMotionBits; }
     /** When false (default), LOOP_REPLAY is a soft signal: logged and routed to an active challenge. */
     public boolean loopReplayHardFail() { return loopReplayHardFail; }
+    /** DEV/demo: when true, a clear passive pass still routes to an active challenge. Default false. */
+    public boolean forceChallenge() { return forceChallenge; }
     public long rcaptureFreshnessWindowMs() { return rcaptureFreshnessWindowMs; }
     public int configVersion() { return configVersion; }
     public String challengeProfile() { return challengeProfile; }
@@ -170,19 +174,19 @@ public final class LivenessConfig {
         private int poseMaxYawDeg = 30;
         private int poseMaxPitchDeg = 30;
         private int minQualifyingFrames = 5;
-        private double blurMinVariance = 100.0;
+        private double blurMinVariance = 60.0;
         private boolean relativeBlurEnabled = false;
         private int relativeBlurWindow = 30;
         private double relativeBlurDropFactor = 2.0;
         private double relativeBlurYShiftFactor = 1.5;
         private double brightnessMin = 40.0;
         private double brightnessMax = 250.0;
-        private double earBlinkThreshold = 0.2;
+        private double earBlinkThreshold = 0.22;
         private double marSmileThreshold = 0.6;
         private double yawTurnThreshold = 15.0;
         private double yawLookThreshold = 10.0;
-        private double pitchLookThreshold = 10.0;
-        private int minActionFrames = 2;
+        private double pitchLookThreshold = 20.0;
+        private int minActionFrames = 1;
         private int frameFreezePHashWindowSize = 15;
         private int freezeConsecutiveFrames = 5;
         private int loopSequenceLengthK = 5;
@@ -190,6 +194,7 @@ public final class LivenessConfig {
         private int freezeHammingThreshold = 2;
         private int loopMinSegmentMotionBits = 3;
         private boolean loopReplayHardFail = false;
+        private boolean forceChallenge = false;
         private long rcaptureFreshnessWindowMs = 30000;
         private int configVersion = 1;
         private String challengeProfile = "DEFAULT";
@@ -236,6 +241,7 @@ public final class LivenessConfig {
         public Builder freezeHammingThreshold(int v)   { this.freezeHammingThreshold = v; return this; }
         public Builder loopMinSegmentMotionBits(int v)  { this.loopMinSegmentMotionBits = v; return this; }
         public Builder loopReplayHardFail(boolean v)    { this.loopReplayHardFail = v; return this; }
+        public Builder forceChallenge(boolean v)        { this.forceChallenge = v; return this; }
         public Builder rcaptureFreshnessWindowMs(long v) { this.rcaptureFreshnessWindowMs = v; return this; }
         public Builder configVersion(int v)            { this.configVersion = v; return this; }
         public Builder challengeProfile(String v)      { this.challengeProfile = Objects.requireNonNull(v); return this; }

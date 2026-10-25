@@ -267,9 +267,8 @@ public final class LivenessSession {
                 frame.faceBboxY());
 
         final long tQuality = liveness.android.StageTimer.start();
-        final boolean turnActive = current == LivenessState.CHALLENGE_WAIT && currentChallenge != null
-                && currentChallenge.action().startsWith("TURN_");
-        QualityGate.QualityResult qr = turnActive
+        final boolean challengeActive = current == LivenessState.CHALLENGE_WAIT && currentChallenge != null;
+        QualityGate.QualityResult qr = challengeActive
                 ? qualityGate.evaluate(rawData, Math.max(config.poseMaxYawDeg(), TURN_YAW_LIMIT_DEG))
                 : qualityGate.evaluate(rawData);
         liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.QUALITY, tQuality);
@@ -333,13 +332,23 @@ public final class LivenessSession {
                 LivenessPolicy.Band band = result.band();
                 switch (band) {
                     case CLEAR_BONA_FIDE:
-                        if (loopSuspected && challengeCount == 0) {
-                            // Loop suspected: a passive pass alone is not enough.
+                        // Route to active challenge when required challenges are not yet confirmed.
+                        // Covers: (a) loop suspected with no challenge issued,
+                        //         (b) forceChallenge mode,
+                        //         (c) production: timeout->retry leaves confirmedChallenges < min
+                        //             so a passive-only retry cannot bypass the challenge requirement.
+                        boolean needsChallenge = (loopSuspected && challengeCount == 0)
+                                || (config.activeEnabled() && confirmedChallenges < config.minChallenges());
+                        if (needsChallenge) {
                             if (config.activeEnabled()) {
-                                audit.logScore("LOOP_SUSPECT_CHALLENGE", score, "Routing to active challenge");
+                                audit.logScore("CHALLENGE_REQUIRED", score,
+                                        "Routing to active challenge: confirmed=" + confirmedChallenges
+                                                + " min=" + config.minChallenges()
+                                                + " loop=" + loopSuspected
+                                                + " force=" + config.forceChallenge());
                                 return fireBandEvent(current, LivenessEvent.UNCERTAIN);
                             }
-                            audit.logScore("LOOP_SUSPECT_REJECT", score, "Active disabled: loop-suspected session cannot pass");
+                            audit.logScore("PASSIVE_ONLY_REJECT", score, "Active disabled: challenges required but unavailable");
                             return fireBandEvent(current, LivenessEvent.ENGINE_ERROR);
                         }
                         return fireBandEvent(current, LivenessEvent.CLEAR_BONA_FIDE);

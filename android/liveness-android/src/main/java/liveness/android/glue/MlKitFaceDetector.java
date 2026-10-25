@@ -39,7 +39,7 @@ public final class MlKitFaceDetector implements FaceDetector, AutoCloseable {
 
     public MlKitFaceDetector() {
         FaceDetectorOptions options = new FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
                 .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
                 .build();
         detector = FaceDetection.getClient(options);

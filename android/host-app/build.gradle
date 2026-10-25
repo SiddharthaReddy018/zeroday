@@ -27,9 +27,9 @@ android {
             java.exclude 'liveness/evaluation/**'
             java.exclude 'liveness/desktop/**'
             java.srcDirs += ['../liveness-android/src/main/java']
-            // Only these glue classes are taken from :liveness-android. No Flutter plugin or bootstrap.
+            // Glue classes taken from :liveness-android.
             java.exclude { d -> !d.file.isDirectory() &&
-                    !(d.file.name in ['MlKitFaceDetector.java', 'CameraXController.java', 'CameraXAnalyzer.java', 'AndroidEnvProbe.java']) &&
+                    !(d.file.name in ['MlKitFaceDetector.java', 'CameraXController.java', 'CameraXAnalyzer.java', 'AndroidEnvProbe.java', 'AndroidSbiLauncher.java', 'AndroidRgbDecoder.java']) &&
                     (d.file.path.contains('/liveness/android/glue/') || d.file.path.contains('/liveness-android/src/')) }
         }
     }

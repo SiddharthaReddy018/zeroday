@@ -78,6 +78,10 @@ public final class ChallengeResponseValidator {
         // Check action matches expected
         List<String> expected = challenge.expectedSequence();
         int seqIdx = challenge.sequenceIndex();
+        if (expected.size() == 1 && seqIdx >= 0) {
+            // Single-action challenge: sequenceIndex is the session position, not an index into expected.
+            seqIdx = 0;
+        }
         if (seqIdx < 0 || seqIdx >= expected.size()) {
             return ValidationResult.reject("INVALID_SEQUENCE_INDEX");
         }
