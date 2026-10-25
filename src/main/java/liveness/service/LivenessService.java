@@ -173,6 +173,10 @@ public final class LivenessService {
                                 callback.onPreviewFrame(frame.pixelData());
                             }
                             state = session.processFrame(frame);
+                            if (state.name().equals("CHALLENGE_WAIT") && session.currentChallenge() != null
+                                    && session.currentChallenge().isExpired(System.currentTimeMillis())) {
+                                state = session.challengeTimeout();
+                            }
                             framesProcessed++;
                             notifyState(callback, state);
                             if (callback != null) {
