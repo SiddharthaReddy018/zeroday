@@ -24,7 +24,7 @@ public final class ChallengeGenerator {
     /** Default challenge pool (§6.3). */
     public static final List<String> DEFAULT_POOL = Collections.unmodifiableList(
             Arrays.asList(
-                    "BLINK", "SMILE",
+                    "BLINK",
                     "TURN_LEFT", "TURN_RIGHT",
                     "LOOK_LEFT", "LOOK_RIGHT",
                     "LOOK_UP", "LOOK_DOWN"));
