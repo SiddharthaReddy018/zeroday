@@ -73,6 +73,8 @@ public final class LivenessSession {
     private final List<Attestation.ChallengeEcho> challengeEchoes;
     private final List<float[]> livenessEmbeddings;
     private int challengeCount;
+    /** Challenges actually answered; unlike challengeCount (issued) it is not advanced by a timeout. */
+    private int confirmedChallenges;
     /** Set when a LOOP_REPLAY signal was seen and loopReplayHardFail is off: bona fide must then pass an active challenge. */
     private boolean loopSuspected;
     private int retryCount;
@@ -149,6 +151,7 @@ public final class LivenessSession {
         this.challengeEchoes = new ArrayList<>();
         this.livenessEmbeddings = new ArrayList<>();
         this.challengeCount = 0;
+        this.confirmedChallenges = 0;
         this.retryCount = 0;
         this.currentChallenge = null;
         this.attestation = null;
@@ -731,7 +734,8 @@ public final class LivenessSession {
 
                 currentChallenge = null;
 
-                if (challengeCount < config.minChallenges()) {
+                confirmedChallenges++;
+                if (confirmedChallenges < config.minChallenges()) {
                     // Row 12: more challenges needed
                     LivenessState next = machine.fire(LivenessEvent.ACTION_CONFIRMED_MORE);
                     audit.logTransition(LivenessState.CHALLENGE_WAIT, next,
