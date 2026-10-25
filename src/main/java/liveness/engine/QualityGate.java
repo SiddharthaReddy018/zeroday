@@ -12,6 +12,11 @@ package liveness.engine;
  */
 public final class QualityGate {
 
+    /** Candidate value, not tuned. */
+    static final double FRAME_MARGIN_FRACTION = 0.02;
+    /** Sentinel: face box origin not supplied. */
+    static final int BBOX_UNKNOWN = Integer.MIN_VALUE;
+
     private final double minBlurVariance;
     private final double minBrightness;
     private final double maxBrightness;
@@ -71,6 +76,20 @@ public final class QualityGate {
             return QualityResult.fail("guide.face.too_far");
         }
 
+        // Face must lie inside the frame with a margin (candidate: 2% of shorter side, not tuned).
+        // Skipped when the box origin is unknown (old constructor).
+        if (frameData.bboxKnown()
+                && frameData.frameWidthPx() > 0 && frameData.frameHeightPx() > 0) {
+            int m = (int) Math.round(FRAME_MARGIN_FRACTION
+                    * Math.min(frameData.frameWidthPx(), frameData.frameHeightPx()));
+            if (frameData.bboxXPx() < m
+                    || frameData.bboxYPx() < m
+                    || frameData.bboxXPx() + frameData.faceBboxWidthPx() > frameData.frameWidthPx() - m
+                    || frameData.bboxYPx() + frameData.faceBboxHeightPx() > frameData.frameHeightPx() - m) {
+                return QualityResult.fail("guide.face.partial");
+            }
+        }
+
         // Pose unavailable (detector sentinel Double.MAX_VALUE, or non-finite): not a pose violation.
         if (poseUnavailable(frameData.yawDeg()) || poseUnavailable(frameData.pitchDeg())) {
             return QualityResult.fail("guide.pose.unavailable");
@@ -119,6 +138,8 @@ public final class QualityGate {
         private final int faceCount;
         private final int frameWidthPx;
         private final int frameHeightPx;
+        private final int bboxXPx;
+        private final int bboxYPx;
 
         public RawFrameData(double laplacianVariance, double brightnessMean,
                             int faceBboxWidthPx, int faceBboxHeightPx,
@@ -134,6 +155,28 @@ public final class QualityGate {
             this.faceCount = faceCount;
             this.frameWidthPx = frameWidthPx;
             this.frameHeightPx = frameHeightPx;
+            this.bboxXPx = BBOX_UNKNOWN;
+            this.bboxYPx = BBOX_UNKNOWN;
+        }
+
+        /** Same as above plus the face box origin, enabling the in-frame check. */
+        public RawFrameData(double laplacianVariance, double brightnessMean,
+                            int faceBboxWidthPx, int faceBboxHeightPx,
+                            double yawDeg, double pitchDeg, double rollDeg,
+                            int faceCount, int frameWidthPx, int frameHeightPx,
+                            int bboxXPx, int bboxYPx) {
+            this.laplacianVariance = laplacianVariance;
+            this.brightnessMean = brightnessMean;
+            this.faceBboxWidthPx = faceBboxWidthPx;
+            this.faceBboxHeightPx = faceBboxHeightPx;
+            this.yawDeg = yawDeg;
+            this.pitchDeg = pitchDeg;
+            this.rollDeg = rollDeg;
+            this.faceCount = faceCount;
+            this.frameWidthPx = frameWidthPx;
+            this.frameHeightPx = frameHeightPx;
+            this.bboxXPx = bboxXPx;
+            this.bboxYPx = bboxYPx;
         }
 
         public double laplacianVariance()  { return laplacianVariance; }
@@ -146,6 +189,9 @@ public final class QualityGate {
         public int faceCount()             { return faceCount; }
         public int frameWidthPx()          { return frameWidthPx; }
         public int frameHeightPx()         { return frameHeightPx; }
+        public int bboxXPx()               { return bboxXPx; }
+        public int bboxYPx()               { return bboxYPx; }
+        public boolean bboxKnown()         { return bboxXPx != BBOX_UNKNOWN && bboxYPx != BBOX_UNKNOWN; }
     }
 
     /**
