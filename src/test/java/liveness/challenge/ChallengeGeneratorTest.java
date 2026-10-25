@@ -157,9 +157,9 @@ class ChallengeGeneratorTest {
 
     @Test
     void defaultPoolHasAllExpectedActions() {
-        assertEquals(8, ChallengeGenerator.DEFAULT_POOL.size());
+        assertEquals(7, ChallengeGenerator.DEFAULT_POOL.size());
         assertTrue(ChallengeGenerator.DEFAULT_POOL.contains("BLINK"));
-        assertTrue(ChallengeGenerator.DEFAULT_POOL.contains("SMILE"));
+        assertTrue(!ChallengeGenerator.DEFAULT_POOL.contains("SMILE"));
         assertTrue(ChallengeGenerator.DEFAULT_POOL.contains("TURN_LEFT"));
         assertTrue(ChallengeGenerator.DEFAULT_POOL.contains("TURN_RIGHT"));
         assertTrue(ChallengeGenerator.DEFAULT_POOL.contains("LOOK_LEFT"));

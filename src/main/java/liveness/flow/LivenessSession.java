@@ -763,7 +763,7 @@ public final class LivenessSession {
         if (currentChallenge != null && detectChallengeAction(frame, currentChallenge.action())) {
             return currentChallenge.action();
         }
-        String[] actions = {"BLINK", "SMILE", "TURN_LEFT", "TURN_RIGHT", "LOOK_LEFT", "LOOK_RIGHT", "LOOK_UP", "LOOK_DOWN"};
+        String[] actions = {"BLINK", "TURN_LEFT", "TURN_RIGHT", "LOOK_LEFT", "LOOK_RIGHT", "LOOK_UP", "LOOK_DOWN"};
         for (String a : actions) {
             if (currentChallenge != null && a.equals(currentChallenge.action())) continue;
             if (detectChallengeAction(frame, a)) {
