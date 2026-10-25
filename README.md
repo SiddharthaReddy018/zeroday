@@ -111,6 +111,19 @@ cd android
 
 ---
 
+## Run the host app (DEV ONLY)
+The host app (`io.oxalpha.liveness.host`, Gradle module `:host-app`) is a development harness. It reads the phone camera directly: no SBI and no biometric device. Live observations so far come from one phone (Nothing A001, Android 15) and one person.
+
+Prerequisites: Android SDK with `ANDROID_HOME` set, `adb` on PATH, and a phone with USB debugging enabled.
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+cd android
+./gradlew :host-app:installDebug
+```
+Then open the app from the phone launcher, allow camera access if asked, tap Start and face the camera. Behaviour, known limits and what was not verified on a device: see "Limitations" below and the live observations section of the test report in the docs repository.
+
+These commands use the standard Android Gradle plugin task names. They were not re-run when this section was written.
+
 ## Android Bench App (device run)
 Device used so far: Nothing A001 (MT6878, Android 15), one phone only. Release build.
 ```bash
