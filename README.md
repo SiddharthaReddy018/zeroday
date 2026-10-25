@@ -2,7 +2,11 @@
 
 **MOSIP Decode 2026 — Problem 04: Face Liveness + PAD**
 
-A production-grade, ISO/IEC 30107-3 and CEN/TS 18099 compliant Face Liveness and Presentation Attack Detection engine engineered for the MOSIP biometric ecosystem (Registration Client & Android SBI).
+A prototype Face Liveness and Presentation Attack Detection engine for the MOSIP biometric ecosystem (Registration Client & Android SBI), designed with ISO/IEC 30107-3 and CEN/TS 18099 in mind. It is not certified or compliance-tested.
+
+**How it works:** a passive PAD model scores every frame that passes the quality gate. If the passive score is clearly bona fide, the session proceeds without an active challenge. The active challenge (blink, turn, look) runs when the passive score is uncertain, or when a replay loop is suspected. The smile detector is implemented but smile is not issued as a challenge.
+
+**Host app:** the Android host app is DEV ONLY. It uses the host camera with no SBI, for demonstration.
 
 ---
 
@@ -14,9 +18,9 @@ Per project organization standards, code and extended documentation are split ac
 MOSIP/
 ├── face-liveness-pad/               # Code repository (zeroday / main)
 │   ├── src/main/java/               # Core engine, audit, crypto, device & Android bridge
-│   ├── src/test/java/               # Comprehensive unit & integration test suites (426 tests)
+│   ├── src/test/java/               # Unit & integration test suites (650 tests at last run)
 │   ├── android/liveness-android/    # Android library module (CameraX, ONNX Runtime AAR, SBI glue)
-│   ├── flutter/liveness_ui/         # Production Flutter reference UI (cross-platform client)
+│   ├── flutter/liveness_ui/         # Flutter reference UI (screens not run on device) (cross-platform client)
 │   ├── ui-contract/                 # JSON schema contracts for engine-UI platform channel
 │   ├── pom.xml                      # Maven project definition (Java 11, Surefire, JaCoCo)
 │   └── README-M4.md                 # Milestone 4 Android integration & benchmark report
@@ -78,7 +82,7 @@ mvn test
 # Run tests with JaCoCo code coverage report generation
 mvn test jacoco:report
 ```
-The full test suite executes **426 tests with 0 failures and 0 errors**. Code coverage reports are emitted to `target/site/jacoco/index.html`.
+At the last run the suite executed **650 tests with 0 failures and 0 errors** (re-run `mvn test` to confirm). Code coverage reports are emitted to `target/site/jacoco/index.html`.
 
 ### Testing Sub-Modules
 ```bash
@@ -127,6 +131,13 @@ Bench outputs are written on the phone under
 
 ## Limitations (Not verified)
 - Only one phone, one lighting setup family and a few distances were measured. Other devices: not tested.
+- Device observations are from one phone and one person; they are not accuracy figures.
+- False BLOCKED_ATTACK on a live face was seen 3 times in one capture and not reproduced in about 11 later runs; cause not verified.
+- Cold-start DEVICE_FAILURE on the first Start after launch was seen in several captures; cause not verified.
+- Turn direction was verified from yaw captures only (own right gives negative yaw, own left positive) and unit tests. No confirmed on-device challenge turn.
+- LOOK_UP and LOOK_DOWN depend on the phone pitch zero point (resting pitch about -5 to -12 degrees) and may be unreliable.
+- The quality gate drops frames with absolute yaw above 30 degrees, which can hide fast or large turns.
+- Partial faces are rejected by an in-frame margin (2 percent of the shorter side), a candidate value that was not tuned.
 - Attack accuracy on real presentation attacks for the relative blur gate: not measured.
 - Detector concurrent cost, signing integration, UI mapping of reason strings, and the
   `:liveness-android` compile in the full app: not verified in the bench sessions.
