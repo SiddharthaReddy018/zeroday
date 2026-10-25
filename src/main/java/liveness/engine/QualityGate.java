@@ -50,6 +50,11 @@ public final class QualityGate {
      * @return quality result with pass/fail, reason, and fusion weight
      */
     public QualityResult evaluate(RawFrameData frameData) {
+        return evaluate(frameData, maxYawDeg);
+    }
+
+    /** Same as evaluate(frame) with a caller-supplied yaw limit, e.g. while a TURN challenge is active. */
+    public QualityResult evaluate(RawFrameData frameData, double yawLimitDeg) {
         // Single face check
         if (frameData.faceCount() != 1) {
             String reason = frameData.faceCount() == 0
@@ -96,7 +101,7 @@ public final class QualityGate {
         }
 
         // Pose check (raw degrees — R3)
-        if (Math.abs(frameData.yawDeg()) > maxYawDeg) {
+        if (Math.abs(frameData.yawDeg()) > yawLimitDeg) {
             return QualityResult.fail("guide.pose.yaw_exceeded");
         }
         if (Math.abs(frameData.pitchDeg()) > maxPitchDeg) {

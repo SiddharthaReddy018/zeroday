@@ -79,6 +79,8 @@ public final class LivenessSession {
     private boolean loopSuspected;
     private int retryCount;
     private BoundChallenge currentChallenge;
+    /** Candidate value, not tuned: yaw limit for the quality gate while a TURN_* challenge is active. */
+    static final double TURN_YAW_LIMIT_DEG = 60.0;
     private Attestation attestation;
     private FaceEmbedder faceEmbedder;      // optional; without it same-face fails closed (unless test-stubbed)
     private BlurWindowGate relativeBlurGate;   // null when relativeBlurEnabled is false; one per session, not thread-safe
@@ -265,7 +267,11 @@ public final class LivenessSession {
                 frame.faceBboxY());
 
         final long tQuality = liveness.android.StageTimer.start();
-        QualityGate.QualityResult qr = qualityGate.evaluate(rawData);
+        final boolean turnActive = current == LivenessState.CHALLENGE_WAIT && currentChallenge != null
+                && currentChallenge.action().startsWith("TURN_");
+        QualityGate.QualityResult qr = turnActive
+                ? qualityGate.evaluate(rawData, Math.max(config.poseMaxYawDeg(), TURN_YAW_LIMIT_DEG))
+                : qualityGate.evaluate(rawData);
         liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.QUALITY, tQuality);
 
         if (!qr.passed()) {
