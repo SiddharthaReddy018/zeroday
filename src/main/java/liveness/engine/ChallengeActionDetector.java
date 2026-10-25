@@ -10,6 +10,9 @@ import liveness.policy.LivenessConfig;
 public final class ChallengeActionDetector {
     private ChallengeActionDetector() {}
 
+    // Yaw sign: on the front camera ML Kit reports negative yaw when the person turns to their own
+    // right and positive yaw to their own left (device test raw17/raw18). Challenge names are the
+    // person's own sides, so TURN_LEFT/LOOK_LEFT need positive yaw.
     public static boolean detect(String action, double[] landmarks, double yawDeg, double pitchDeg,
                                  LivenessConfig config) {
         if (action == null || config == null) return false;
@@ -24,13 +27,13 @@ public final class ChallengeActionDetector {
                 return !Double.isNaN(mar) && LandmarkDetector.detectSmile(mar, config.marSmileThreshold());
             }
             case "TURN_LEFT":
-                return LandmarkDetector.detectTurn(yawDeg, config.yawTurnThreshold(), "LEFT");
-            case "TURN_RIGHT":
                 return LandmarkDetector.detectTurn(yawDeg, config.yawTurnThreshold(), "RIGHT");
+            case "TURN_RIGHT":
+                return LandmarkDetector.detectTurn(yawDeg, config.yawTurnThreshold(), "LEFT");
             case "LOOK_LEFT":
-                return LandmarkDetector.detectTurn(yawDeg, config.yawLookThreshold(), "LEFT");
-            case "LOOK_RIGHT":
                 return LandmarkDetector.detectTurn(yawDeg, config.yawLookThreshold(), "RIGHT");
+            case "LOOK_RIGHT":
+                return LandmarkDetector.detectTurn(yawDeg, config.yawLookThreshold(), "LEFT");
             case "LOOK_UP":
                 return pitchDeg < -config.pitchLookThreshold();
             case "LOOK_DOWN":
