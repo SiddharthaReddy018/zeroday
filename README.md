@@ -138,6 +138,8 @@ Bench outputs are written on the phone under
 - LOOK_UP and LOOK_DOWN depend on the phone pitch zero point (resting pitch about -5 to -12 degrees) and may be unreliable.
 - The quality gate drops frames with absolute yaw above 30 degrees, which can hide fast or large turns.
 - Partial faces are rejected by an in-frame margin (2 percent of the shorter side), a candidate value that was not tuned.
+- Blur gate margin is thin on the test phone. Blur limit is 100 (Laplacian variance). Frames that passed in one good capture measured about 101 to 156. In two other captures live frames measured a median of about 63 to 73, every frame was rejected, and the session stayed on PENDING (POSITIONING). Cause (lens, angle, distance, focus, light) is not verified. Keep the lens clean and hold steady in good light when demonstrating. The threshold was not loosened because no attack data supports a lower value.
+- The latest clean release build was not re-verified on device after the last fixes; a live PASS was last observed on a debug build.
 - Attack accuracy on real presentation attacks for the relative blur gate: not measured.
 - Detector concurrent cost, signing integration, UI mapping of reason strings, and the
   `:liveness-android` compile in the full app: not verified in the bench sessions.
