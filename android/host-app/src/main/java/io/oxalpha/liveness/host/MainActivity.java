@@ -122,7 +122,11 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                 SFaceEmbedder embedder = new SFaceEmbedder(sface, SFACE_SHA, detector);
                 MiniFasNetScorer scorer = new MiniFasNetScorer(pad, PAD_SHA);
                 SameFaceChecker same = new SameFaceChecker(SFaceEmbedder.CALIBRATED_THRESHOLD);
-                ChallengeGenerator gen = new ChallengeGenerator(ChallengeGenerator.DEFAULT_POOL, Collections.emptyList());
+                // DEV host app: LOOK_* actions removed from the issued pool (resting-pitch and
+                // LOOK_RIGHT-during-TURN_LEFT false positives seen on device).
+                ChallengeGenerator gen = new ChallengeGenerator(
+                        java.util.Arrays.asList("BLINK", "TURN_LEFT", "TURN_RIGHT"),
+                        Collections.emptyList());
                 service = new LivenessService(LivenessConfig.defaultConfig(), scorer, same, gen,
                         new RetryRateLimiter(5, 60_000), signer);
                 service.setFaceEmbedder(embedder);
