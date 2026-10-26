@@ -6,7 +6,7 @@ A prototype Face Liveness and Presentation Attack Detection engine for the MOSIP
 
 **How it works:** a passive PAD model scores every frame that passes the quality gate. If the passive score is clearly bona fide, the session proceeds without an active challenge. The active challenge (blink, turn, look) runs when the passive score is uncertain, or when a replay loop is suspected. The smile detector is implemented but smile is not issued as a challenge.
 
-**Host app:** the Android host app is DEV ONLY. It uses the host camera with no SBI, for demonstration.
+**Host app:** the Android host app is DEV ONLY. It uses the host camera. If an SBI app is installed it detects it and switches to an SBI path with signature checking disabled; no real SBI or L0/L1 device was tested. It forces an active challenge on every session.
 
 ---
 
@@ -18,7 +18,7 @@ Per project organization standards, code and extended documentation are split ac
 MOSIP/
 ├── face-liveness-pad/               # Code repository (zeroday / main)
 │   ├── src/main/java/               # Core engine, audit, crypto, device & Android bridge
-│   ├── src/test/java/               # Unit & integration test suites (650 tests at last run)
+│   ├── src/test/java/               # Unit & integration test suites (651 tests at last run)
 │   ├── android/liveness-android/    # Android library module (CameraX, ONNX Runtime AAR, SBI glue)
 │   ├── flutter/liveness_ui/         # Flutter reference UI (screens not run on device) (cross-platform client)
 │   ├── ui-contract/                 # JSON schema contracts for engine-UI platform channel
@@ -82,7 +82,7 @@ mvn test
 # Run tests with JaCoCo code coverage report generation
 mvn test jacoco:report
 ```
-At the last run the suite executed **650 tests with 0 failures and 0 errors** (re-run `mvn test` to confirm). Code coverage reports are emitted to `target/site/jacoco/index.html`.
+At the last run the suite executed **651 tests with 0 failures, 0 errors and 0 skipped** (re-run `mvn test` to confirm). Code coverage reports are emitted to `target/site/jacoco/index.html`.
 
 ### Testing Sub-Modules
 ```bash
@@ -112,7 +112,7 @@ cd android
 ---
 
 ## Run the host app (DEV ONLY)
-The host app (`io.oxalpha.liveness.host`, Gradle module `:host-app`) is a development harness. It reads the phone camera directly: no SBI and no biometric device. Live observations so far come from one phone (Nothing A001, Android 15) and one person.
+The host app (`io.oxalpha.liveness.host`, Gradle module `:host-app`) is a development harness. It reads the phone camera directly. If an SBI app is installed it detects it and uses an SBI path with signature checking disabled; no real SBI or L0/L1 device was tested. It forces an active challenge on every session. Live observations so far come from one phone (Nothing A001, Android 15) and one person.
 
 Prerequisites: Android SDK with `ANDROID_HOME` set, `adb` on PATH, and a phone with USB debugging enabled.
 ```bash
@@ -145,11 +145,14 @@ Bench outputs are written on the phone under
 ## Limitations (Not verified)
 - Only one phone, one lighting setup family and a few distances were measured. Other devices: not tested.
 - Device observations are from one phone and one person; they are not accuracy figures.
+- The host app forces a challenge on every session. The library default is passive-first, so host app runs do not show the passive-only path.
+- SBI signature verification is disabled in the development paths (SbiJwtVerifier.disabledForDevelopment). No real SBI or L0/L1 device was connected.
+- Presentation attack trials on the phone were run by the developer after the last engine fixes. Results are not logged in this repository and no detection rates are claimed.
 - False BLOCKED_ATTACK on a live face was seen 3 times in one capture and not reproduced in about 11 later runs; cause not verified.
-- Cold-start DEVICE_FAILURE on the first Start after launch was seen in several captures; cause not verified.
+- Cold-start DEVICE_FAILURE on the first Start after launch was seen in several captures; cause not verified. A later change tolerates one large first frame gap; whether it removes the failure is not verified.
 - Turn direction was verified from yaw captures only (own right gives negative yaw, own left positive) and unit tests. No confirmed on-device challenge turn.
 - LOOK_UP and LOOK_DOWN depend on the phone pitch zero point (resting pitch about -5 to -12 degrees) and may be unreliable.
-- The quality gate drops frames with absolute yaw above 30 degrees, which can hide fast or large turns.
+- The quality gate drops frames with absolute yaw above 30 degrees, which can hide fast or large turns. A later change relaxes this limit while a challenge is active; the new limit was not measured across devices.
 - Partial faces are rejected by an in-frame margin (2 percent of the shorter side), a candidate value that was not tuned.
 - Blur gate margin is thin on the test phone. Blur limit is 100 (Laplacian variance). Frames that passed in one good capture measured about 101 to 156. In two other captures live frames measured a median of about 63 to 73, every frame was rejected, and the session stayed on PENDING (POSITIONING). Cause (lens, angle, distance, focus, light) is not verified. Keep the lens clean and hold steady in good light when demonstrating. The threshold was not loosened because no attack data supports a lower value.
 - The latest clean release build was not re-verified on device after the last fixes; a live PASS was last observed on a debug build.
