@@ -97,7 +97,7 @@ Maven (needs Maven Central, JDK 11+): `mvn -q test`; Android part only: `mvn -q 
 Gradle: `cd android && gradle :liveness-android:testDebugUnitTest`. Dart: `cd flutter/liveness_ui && flutter test`.
 
 Verified in the authoring environment (JDK 21, `--release 11`, JUnit platform provider):
-**426 tests pass** (0 failures, 0 errors) across the full test suite (core engine, evaluation harness,
+**426 tests passed at the Milestone 4 snapshot** (0 failures, 0 errors; this is a dated count, the current count is in README.md and reports/TEST_REPORT.md) across the full test suite (core engine, evaluation harness,
 Android platform channel, SBI bridge, MDS HTTP adapter, audit chain, cryptography, and integration tests).
 New & enhanced suites: `CameraXDeviceAdapterTest`, `SbiIntentBridgeTest`, `SbiJwtVerifierTest` (openssl PKI with
 multi-hop CA validation), `Iso19794FaceTest`, `EnvironmentIntegrityCheckerTest` (dev vs prod profiles),
