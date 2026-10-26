@@ -34,7 +34,7 @@ MOSIP/
 ## Architectural Highlights
 
 1. **Lightweight Neural PAD Scorer:**
-   - Shipped with optimized INT8 quantized model (`MiniFASNetV2-SE-int8.onnx`, 612 KB).
+   - Uses the optimized INT8 quantized model (`MiniFASNetV2-SE-int8.onnx`, 612 KB; not stored in git, see "Model and dataset files").
    - Low-latency edge execution: **Mean: 8.80 ms, p50: 8.63 ms, p95: 11.34 ms, p99: 12.60 ms** (far exceeding the MOSIP 200 ms target by >17x).
    - Single-model decision architecture with strict `[0, 100]` probability score mapping and calibrated threshold bands (`PASS`, `UNCERTAIN`, `ATTACK`).
 
@@ -69,6 +69,16 @@ MOSIP/
 ### Prerequisites
 - JDK 11 or higher (built and verified with JDK 21, `--release 11`)
 - Apache Maven 3.8+
+- Android parts only: Android SDK with `ANDROID_HOME` set, `adb` on PATH, and a JDK for Gradle (Gradle wrapper in `android/`)
+- Flutter reference UI only: Flutter SDK (version Not verified)
+
+### Model and dataset files (not in git)
+Model files, datasets and the `models/` and `datasets/` folders are git-ignored, so a fresh clone does not contain them.
+- Put the ONNX models in `datasets/models/`: `MiniFASNetV2-SE.onnx`, `MiniFASNetV2-SE-int8.onnx`, `face_detection_yunet.onnx`, `face_recognition_sface.onnx`.
+- The MiniFASNetV2-SE models come from `facenox/face-antispoof-onnx` (Apache-2.0). Expected SHA-256: FP32 `af2381b88f38769222ed93379e12444e2a50814575de1c46170de570c55a42b6`, INT8 `fde20585635cae62ed1d41796f76b6f8bc4b92cd91ec1cf0f1bc6485d2d587a9`. Sources for the YuNet and SFace files: Not verified.
+- The host app also reads copies of the models from `android/host-app/src/main/assets/` (git-ignored). Copy the same files there before `installDebug`.
+- Datasets (for example ONOT, CC BY-NC 4.0) are not redistributed. `datasets/download_datasets.sh` is a local helper with hard-coded paths and has not been verified on another machine.
+- Without these files, tests that need them are skipped, not failed. An earlier run without them skipped 24 tests (not re-run). With them present, the last run was 651 tests, 0 skipped.
 
 ### Running the Java Test Suite
 ```bash
