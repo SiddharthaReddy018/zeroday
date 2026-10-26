@@ -23,12 +23,8 @@ MOSIP/
 │   ├── flutter/liveness_ui/         # Flutter reference UI (screens not run on device) (cross-platform client)
 │   ├── ui-contract/                 # JSON schema contracts for engine-UI platform channel
 │   ├── pom.xml                      # Maven project definition (Java 11, Surefire, JaCoCo)
-│   └── README-M4.md                 # Milestone 4 Android integration & benchmark report
-│
-└── zerodayjunk-/                    # Documentation repository (tracked separately)
-    ├── TEST_REPORT.md, TECHNICAL_DESIGN.md, INTEGRATION_GUIDE.md, UX_GUIDE.md, DEMO_SCRIPT.md
-    ├── design-notes/                # Blur-gate notes and final report
-    └── bench-results/               # Raw-run notes and results per bench session
+│   ├── README-M4.md                 # Milestone 4 Android integration & benchmark report
+│   └── reports/                    # Test report, architecture, design notes, bench results
 ```
 
 > **Note:** The `docs/` folder in `face-liveness-pad` contains localized working copies and is strictly excluded from git tracking (`.gitignore`) to maintain repository hygiene.
@@ -120,7 +116,7 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 cd android
 ./gradlew :host-app:installDebug
 ```
-Then open the app from the phone launcher, allow camera access if asked, tap Start and face the camera. Behaviour, known limits and what was not verified on a device: see "Limitations" below and the live observations section of the test report in the docs repository.
+Then open the app from the phone launcher, allow camera access if asked, tap Start and face the camera. Behaviour, known limits and what was not verified on a device: see "Limitations" below and the live observations section of `reports/TEST_REPORT.md`.
 
 These commands use the standard Android Gradle plugin task names. They were not re-run when this section was written.
 
@@ -137,8 +133,7 @@ Bench outputs are written on the phone under
 
 ## Test Results
 - Java suite: see "Running the Java Test Suite" above. Re-run `mvn test` to confirm the count on your machine.
-- Device bench results, thermal readings and the relative blur-gate findings are in the documentation repository
-  (https://github.com/SiddharthaReddy018/zerodayjunk-): `bench-results/` and `design-notes/`.
+- Device bench results, thermal readings and the relative blur-gate findings are in `reports/bench-results/` and `reports/design-notes/`.
 - The relative blur gate is additive, default off, and not enabled by the app. Its constants
   (window 30, drop 2.0, y shift 1.5) are candidates, not fitted values.
 
