@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <queries>
+        <!-- MOSIP SBI discovery -->
+        <intent><action android:name="io.sbi.device" /></intent>
         <package android:name="com.topjohnwu.magisk" />
         <package android:name="io.github.vvb2060.magisk" />
         <package android:name="eu.chainfire.supersu" />

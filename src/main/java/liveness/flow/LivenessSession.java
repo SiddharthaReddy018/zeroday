@@ -79,6 +79,8 @@ public final class LivenessSession {
     private boolean loopSuspected;
     private int retryCount;
     private BoundChallenge currentChallenge;
+    /** Candidate value, not tuned: yaw limit for the quality gate while a TURN_* challenge is active. */
+    static final double TURN_YAW_LIMIT_DEG = 85.0;
     private Attestation attestation;
     private FaceEmbedder faceEmbedder;      // optional; without it same-face fails closed (unless test-stubbed)
     private BlurWindowGate relativeBlurGate;   // null when relativeBlurEnabled is false; one per session, not thread-safe
@@ -265,7 +267,10 @@ public final class LivenessSession {
                 frame.faceBboxY());
 
         final long tQuality = liveness.android.StageTimer.start();
-        QualityGate.QualityResult qr = qualityGate.evaluate(rawData);
+        final boolean challengeActive = current == LivenessState.CHALLENGE_WAIT && currentChallenge != null;
+        QualityGate.QualityResult qr = challengeActive
+                ? qualityGate.evaluate(rawData, Math.max(config.poseMaxYawDeg(), TURN_YAW_LIMIT_DEG))
+                : qualityGate.evaluate(rawData);
         liveness.android.StageTimer.stop(liveness.android.StageTimer.Stage.QUALITY, tQuality);
 
         if (!qr.passed()) {
@@ -275,8 +280,13 @@ public final class LivenessSession {
                 audit.logTransition(current, next, "QUALITY_DROPPED: " + qr.failureReason());
                 return next;
             }
-            // Already in POSITIONING -- stay there
-            return current;
+            if (current == LivenessState.CHALLENGE_WAIT && currentChallenge != null && frame.faceCount() == 1) {
+                // In challenge wait, subject is actively moving. Do not discard frames with a valid
+                // single face due to normal motion blur, box margin shift, or head angle during turn.
+            } else {
+                // Already in POSITIONING or other non-challenge state -- stay there
+                return current;
+            }
         }
 
         // --- 2b. Relative blur gate (additive, default off). Sessions with no valid full-frame sample skip it. ---
@@ -309,8 +319,12 @@ public final class LivenessSession {
         // --- 3. Spatial PAD scoring ---
         if (current == LivenessState.PASSIVE || current == LivenessState.CHALLENGE_WAIT) {
             int padScore = scorePad(frame);
-            spatialPad.addFrame(padScore, qr.qualityWeight());
-            audit.logScore("PAD", padScore, "weight=" + qr.qualityWeight());
+            boolean isFrontal = Math.abs(frame.yawDeg()) <= config.poseMaxYawDeg()
+                    && Math.abs(frame.pitchDeg()) <= config.poseMaxPitchDeg();
+            if (isFrontal) {
+                spatialPad.addFrame(padScore, qr.qualityWeight());
+            }
+            audit.logScore("PAD", padScore, "weight=" + qr.qualityWeight() + ",yaw=" + frame.yawDeg());
 
             // During challenge wait, also check action detectors
             if (current == LivenessState.CHALLENGE_WAIT && currentChallenge != null) {
@@ -327,13 +341,23 @@ public final class LivenessSession {
                 LivenessPolicy.Band band = result.band();
                 switch (band) {
                     case CLEAR_BONA_FIDE:
-                        if (loopSuspected && challengeCount == 0) {
-                            // Loop suspected: a passive pass alone is not enough.
+                        // Route to active challenge when required challenges are not yet confirmed.
+                        // Covers: (a) loop suspected with no challenge issued,
+                        //         (b) forceChallenge mode,
+                        //         (c) production: timeout->retry leaves confirmedChallenges < min
+                        //             so a passive-only retry cannot bypass the challenge requirement.
+                        boolean needsChallenge = (loopSuspected && challengeCount == 0)
+                                || (config.activeEnabled() && confirmedChallenges < config.minChallenges());
+                        if (needsChallenge) {
                             if (config.activeEnabled()) {
-                                audit.logScore("LOOP_SUSPECT_CHALLENGE", score, "Routing to active challenge");
+                                audit.logScore("CHALLENGE_REQUIRED", score,
+                                        "Routing to active challenge: confirmed=" + confirmedChallenges
+                                                + " min=" + config.minChallenges()
+                                                + " loop=" + loopSuspected
+                                                + " force=" + config.forceChallenge());
                                 return fireBandEvent(current, LivenessEvent.UNCERTAIN);
                             }
-                            audit.logScore("LOOP_SUSPECT_REJECT", score, "Active disabled: loop-suspected session cannot pass");
+                            audit.logScore("PASSIVE_ONLY_REJECT", score, "Active disabled: challenges required but unavailable");
                             return fireBandEvent(current, LivenessEvent.ENGINE_ERROR);
                         }
                         return fireBandEvent(current, LivenessEvent.CLEAR_BONA_FIDE);
@@ -458,7 +482,18 @@ public final class LivenessSession {
         LivenessPolicy.Band finalBand = policy.route(finalPadScore);
         audit.logScore("FINAL_PAD", finalPadScore, finalBand.name());
 
+        boolean isFrontalFinal = Math.abs(rcaptureFrame.yawDeg()) <= config.poseMaxYawDeg()
+                && Math.abs(rcaptureFrame.pitchDeg()) <= config.poseMaxPitchDeg();
+
         if (finalBand == LivenessPolicy.Band.CLEAR_ATTACK) {
+            if (!isFrontalFinal) {
+                // Non-frontal pose on final capture is a quality/pose failure, NOT a presentation attack
+                next = machine.fire(LivenessEvent.SAME_FACE_FAIL);
+                audit.logTransition(LivenessState.VERIFYING_FINAL, next,
+                        "FINAL_PAD_POSE_DEVIATION: yaw=" + rcaptureFrame.yawDeg()
+                                + ",pitch=" + rcaptureFrame.pitchDeg());
+                return next;
+            }
             // Row 20: VERIFYING_FINAL -> BLOCKED_ATTACK
             next = machine.fire(LivenessEvent.FINAL_PAD_ATTACK);
             audit.logTransition(LivenessState.VERIFYING_FINAL, next, "FINAL_PAD_ATTACK");
@@ -692,11 +727,16 @@ public final class LivenessSession {
      * and PAD re-scoring simultaneously.
      */
     private LivenessState processFrameDuringChallenge(FaceFrame frame, int padScore) {
-        // Check for hard PAD flag during challenge
-        LivenessPolicy.Band band = policy.route(padScore);
-        if (band == LivenessPolicy.Band.CLEAR_ATTACK) {
+        // Frontal gate for PAD evaluation during challenge:
+        // MiniFASNet is trained on frontal faces. When user turns head for TURN_LEFT/TURN_RIGHT,
+        // yaw exceeds poseMaxYawDeg and 2D texture degrades. Only evaluate PAD when face is frontal.
+        boolean isFrontalForPad = Math.abs(frame.yawDeg()) <= config.poseMaxYawDeg()
+                && Math.abs(frame.pitchDeg()) <= config.poseMaxPitchDeg();
+
+        if (isFrontalForPad) {
+            LivenessPolicy.Band band = policy.route(padScore);
             decisionEngine.recordWindow(band);
-            if (decisionEngine.isAttackPersisted()) {
+            if (band == LivenessPolicy.Band.CLEAR_ATTACK && decisionEngine.isAttackPersisted()) {
                 // Row 15: CHALLENGE_WAIT -> BLOCKED_ATTACK
                 LivenessState next = machine.fire(LivenessEvent.CHALLENGE_PAD_FLAG);
                 audit.logTransition(LivenessState.CHALLENGE_WAIT, next,
@@ -767,11 +807,15 @@ public final class LivenessSession {
         if (currentChallenge != null && detectChallengeAction(frame, currentChallenge.action())) {
             return currentChallenge.action();
         }
-        String[] actions = {"BLINK", "TURN_LEFT", "TURN_RIGHT", "LOOK_LEFT", "LOOK_RIGHT", "LOOK_UP", "LOOK_DOWN"};
-        for (String a : actions) {
-            if (currentChallenge != null && a.equals(currentChallenge.action())) continue;
-            if (detectChallengeAction(frame, a)) {
-                return a;
+        // Only report directly opposing wrong actions to prevent natural reflexes (such as
+        // blinking while turning) from erroneously resetting challenge progress or reporting wrong action.
+        if (currentChallenge != null) {
+            String exp = currentChallenge.action();
+            if ("TURN_LEFT".equals(exp) && detectChallengeAction(frame, "TURN_RIGHT")) {
+                return "TURN_RIGHT";
+            }
+            if ("TURN_RIGHT".equals(exp) && detectChallengeAction(frame, "TURN_LEFT")) {
+                return "TURN_LEFT";
             }
         }
         return null;

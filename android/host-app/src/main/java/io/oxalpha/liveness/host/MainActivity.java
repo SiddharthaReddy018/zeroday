@@ -20,18 +20,26 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Collections;
+import java.util.List;
 
+import liveness.android.AndroidDeviceAdapter;
 import liveness.android.CameraOnlyDevAdapter;
 import liveness.android.CameraXDeviceAdapter;
 import liveness.android.CompositeFaceDetector;
+import liveness.android.CrossStreamBinder;
 import liveness.android.EnvironmentIntegrityChecker;
 import liveness.android.SFaceEmbedder;
+import liveness.android.SbiIntentDeviceAdapter;
+import liveness.android.SbiJwtVerifier;
 import liveness.android.YuNetFaceDetector;
 import liveness.android.glue.AndroidEnvProbe;
+import liveness.android.glue.AndroidRgbDecoder;
+import liveness.android.glue.AndroidSbiLauncher;
 import liveness.android.glue.CameraXController;
 import liveness.android.glue.MlKitFaceDetector;
 import liveness.challenge.ChallengeGenerator;
 import liveness.crypto.AndroidKeyStoreSigner;
+import liveness.device.DeviceAdapter;
 import liveness.engine.MiniFasNetScorer;
 import liveness.engine.SameFaceChecker;
 import liveness.flow.RetryRateLimiter;
@@ -50,24 +58,30 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
     private static final String SFACE_SHA = "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79";
 
     private PreviewView previewView;
-    private TextView status, prompt, result;
+    private TextView banner, status, prompt, result;
     private Button start;
     private LivenessService service;
     private CameraXDeviceAdapter camera;
     private CompositeFaceDetector detector;
     private final CameraXController controller = new CameraXController();
     private volatile boolean running;
+    private AndroidSbiLauncher sbiLauncher;
+    private SFaceEmbedder sfaceEmbedder;
+    private SameFaceChecker sameChecker;
+    private volatile boolean sbiAvailable;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        sbiLauncher = new AndroidSbiLauncher(this);
+
         FrameLayout root = new FrameLayout(this);
         previewView = new PreviewView(this);
         root.addView(previewView, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(24, 48, 24, 24);
-        TextView banner = text("DEV MODE: no SBI, host camera only. Not the MOSIP SBI flow.", 14);
+        banner = text("Detecting SBI / camera configuration...", 14);
         banner.setBackgroundColor(Color.parseColor("#CC8800"));
         status = text("Starting...", 16);
         prompt = text("", 28);
@@ -119,17 +133,30 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                 detector = new CompositeFaceDetector(new YuNetFaceDetector(yunet.toPath()), new MlKitFaceDetector());
                 AndroidKeyStoreSigner.ensureKey(AndroidKeyStoreSigner.DEFAULT_ALIAS);
                 AndroidKeyStoreSigner signer = new AndroidKeyStoreSigner(AndroidKeyStoreSigner.DEFAULT_ALIAS);
-                SFaceEmbedder embedder = new SFaceEmbedder(sface, SFACE_SHA, detector);
+                sfaceEmbedder = new SFaceEmbedder(sface, SFACE_SHA, detector);
                 MiniFasNetScorer scorer = new MiniFasNetScorer(pad, PAD_SHA);
-                SameFaceChecker same = new SameFaceChecker(SFaceEmbedder.CALIBRATED_THRESHOLD);
-                ChallengeGenerator gen = new ChallengeGenerator(ChallengeGenerator.DEFAULT_POOL, Collections.emptyList());
-                service = new LivenessService(LivenessConfig.defaultConfig(), scorer, same, gen,
+                sameChecker = new SameFaceChecker(SFaceEmbedder.CALIBRATED_THRESHOLD);
+                // Issued pool restricted to BLINK, TURN_LEFT, TURN_RIGHT.
+                ChallengeGenerator gen = new ChallengeGenerator(
+                        java.util.Arrays.asList("BLINK", "TURN_LEFT", "TURN_RIGHT"),
+                        Collections.emptyList());
+                service = new LivenessService(LivenessConfig.builder().forceChallenge(true).build(), scorer, sameChecker, gen,
                         new RetryRateLimiter(5, 60_000), signer);
-                service.setFaceEmbedder(embedder);
+                service.setFaceEmbedder(sfaceEmbedder);
+
+                List<String> sbiPkgs = sbiLauncher.resolveSbiPackages();
+                sbiAvailable = !sbiPkgs.isEmpty();
 
                 runOnUiThread(() -> {
                     camera = new CameraXDeviceAdapter("front-camera", detector);
                     controller.bind(getApplicationContext(), this, previewView, camera);
+                    if (sbiAvailable) {
+                        banner.setText("SBI MODE: " + sbiPkgs.get(0) + " (MOSIP Intent Flow)");
+                        banner.setBackgroundColor(Color.parseColor("#006600"));
+                    } else {
+                        banner.setText("DEV MODE: host camera only (no external SBI app).");
+                        banner.setBackgroundColor(Color.parseColor("#CC8800"));
+                    }
                     status.setText("Ready. Face the front camera.");
                     start.setEnabled(true);
                 });
@@ -148,7 +175,16 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
             try {
                 EnvironmentIntegrityChecker integrity = EnvironmentIntegrityChecker.forDevelopment(
                         new AndroidEnvProbe(getApplicationContext()), true);
-                CameraOnlyDevAdapter device = new CameraOnlyDevAdapter(integrity, camera);
+                DeviceAdapter device;
+                if (sbiAvailable) {
+                    CrossStreamBinder binder = new CrossStreamBinder(sameChecker, sfaceEmbedder, 10_000);
+                    SbiIntentDeviceAdapter sbi = new SbiIntentDeviceAdapter(
+                            sbiLauncher, binder, camera::latestFrame, new AndroidRgbDecoder(),
+                            SbiJwtVerifier.disabledForDevelopment(), "MOSIP_Registration_Client", "Registration", 5000);
+                    device = new AndroidDeviceAdapter(integrity, camera, sbi);
+                } else {
+                    device = new CameraOnlyDevAdapter(integrity, camera);
+                }
                 service.performLiveness("dev-subject", device, "dev-operator",
                         LivenessService.WorkflowType.RESIDENT_REGISTRATION, this);
             } catch (RuntimeException e) {
@@ -181,16 +217,23 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
     }
 
     @Override public void onStateChanged(String state, String message) {
+        android.util.Log.i("MainActivity", "onStateChanged: " + state + " (msg=" + message + ")");
+        System.err.println("CALLBACK onStateChanged: " + state + " - " + message);
         runOnUiThread(() -> status.setText(state + (message == null ? "" : ": " + message)));
     }
     @Override public void onPreviewFrame(byte[] jpegBytes) { }
     @Override public void onChallengePrompt(String action, long timeoutMs) {
+        android.util.Log.i("MainActivity", "onChallengePrompt: " + action + " (" + timeoutMs + " ms)");
+        System.err.println("CALLBACK onChallengePrompt: " + action + " (" + timeoutMs + " ms)");
         runOnUiThread(() -> prompt.setText(action + " (" + (timeoutMs / 1000) + " s)"));
     }
     @Override public void onProgress(int framesProcessed, int framesNeeded) {
         runOnUiThread(() -> status.setText("Frames " + framesProcessed + " / " + framesNeeded));
     }
     @Override public void onResult(LivenessService.LivenessResult r) {
+        android.util.Log.i("MainActivity", "onResult: verdict=" + r.verdict() + ", failureReason=" + r.failureReason()
+                + ", retries=" + r.retryCount());
+        System.err.println("CALLBACK onResult: verdict=" + r.verdict() + ", failureReason=" + r.failureReason());
         runOnUiThread(() -> {
             prompt.setText("");
             result.setText("VERDICT: " + r.verdict() + (r.failureReason() == null ? "" : "\n" + r.failureReason())
@@ -198,6 +241,8 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
         });
     }
     @Override public void onError(String errorCode, String message) {
+        android.util.Log.e("MainActivity", "onError: " + errorCode + " - " + message);
+        System.err.println("CALLBACK onError: " + errorCode + " - " + message);
         runOnUiThread(() -> result.setText("ERROR " + errorCode + ": " + message));
     }
 

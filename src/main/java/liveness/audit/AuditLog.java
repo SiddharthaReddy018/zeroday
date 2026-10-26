@@ -35,6 +35,7 @@ public final class AuditLog {
 
     /** Log a state transition. Accepts enum states for type safety. */
     public void logTransition(Object fromState, Object toState, String event) {
+        System.err.println("TRANSITION: from=" + fromState + " to=" + toState + " event=" + event);
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "STATE",
@@ -45,6 +46,7 @@ public final class AuditLog {
 
     /** Log a PAD score with a detail string. */
     public void logScore(String scorer, int score, String detail) {
+        System.err.println("SCORE: scorer=" + scorer + " score=" + score + " detail=" + detail);
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "PAD",
@@ -54,6 +56,7 @@ public final class AuditLog {
 
     /** Log a band decision with reason. */
     public void logBand(String band, int compositeScore, String reason) {
+        System.err.println("BAND: band=" + band + " composite=" + compositeScore + " reason=" + reason);
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "PAD",
@@ -63,6 +66,7 @@ public final class AuditLog {
 
     /** Log a challenge issue. */
     public void logChallengeIssued(String action, int sequenceIndex) {
+        System.err.println("CHALLENGE_ISSUED: action=" + action + " seq=" + sequenceIndex);
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "CHALLENGE",
@@ -72,6 +76,7 @@ public final class AuditLog {
 
     /** Log a challenge result. */
     public void logChallengeResult(String action, boolean success, String detail) {
+        System.err.println("CHALLENGE_RESULT: action=" + action + " success=" + success + " detail=" + detail);
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "CHALLENGE",

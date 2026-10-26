@@ -35,9 +35,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class CameraXDeviceAdapter implements DeviceAdapter {
 
     public static final int DEFAULT_QUEUE_CAPACITY = 3;
-    public static final long DEFAULT_FRAME_TIMEOUT_MS = 2000L;
+    public static final long DEFAULT_FRAME_TIMEOUT_MS = 5000L;
     /** Cadence of frames reaching the engine (inference-bound on low-end phones), not the sensor rate. */
-    public static final long DEFAULT_EXPECTED_INTERVAL_MS = 200L;
+    public static final long DEFAULT_EXPECTED_INTERVAL_MS = 500L;
 
     private final String cameraId;
     private final FaceDetector detector;
