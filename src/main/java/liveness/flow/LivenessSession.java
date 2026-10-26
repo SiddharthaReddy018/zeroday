@@ -319,8 +319,12 @@ public final class LivenessSession {
         // --- 3. Spatial PAD scoring ---
         if (current == LivenessState.PASSIVE || current == LivenessState.CHALLENGE_WAIT) {
             int padScore = scorePad(frame);
-            spatialPad.addFrame(padScore, qr.qualityWeight());
-            audit.logScore("PAD", padScore, "weight=" + qr.qualityWeight());
+            boolean isFrontal = Math.abs(frame.yawDeg()) <= config.poseMaxYawDeg()
+                    && Math.abs(frame.pitchDeg()) <= config.poseMaxPitchDeg();
+            if (isFrontal) {
+                spatialPad.addFrame(padScore, qr.qualityWeight());
+            }
+            audit.logScore("PAD", padScore, "weight=" + qr.qualityWeight() + ",yaw=" + frame.yawDeg());
 
             // During challenge wait, also check action detectors
             if (current == LivenessState.CHALLENGE_WAIT && currentChallenge != null) {
@@ -478,7 +482,18 @@ public final class LivenessSession {
         LivenessPolicy.Band finalBand = policy.route(finalPadScore);
         audit.logScore("FINAL_PAD", finalPadScore, finalBand.name());
 
+        boolean isFrontalFinal = Math.abs(rcaptureFrame.yawDeg()) <= config.poseMaxYawDeg()
+                && Math.abs(rcaptureFrame.pitchDeg()) <= config.poseMaxPitchDeg();
+
         if (finalBand == LivenessPolicy.Band.CLEAR_ATTACK) {
+            if (!isFrontalFinal) {
+                // Non-frontal pose on final capture is a quality/pose failure, NOT a presentation attack
+                next = machine.fire(LivenessEvent.SAME_FACE_FAIL);
+                audit.logTransition(LivenessState.VERIFYING_FINAL, next,
+                        "FINAL_PAD_POSE_DEVIATION: yaw=" + rcaptureFrame.yawDeg()
+                                + ",pitch=" + rcaptureFrame.pitchDeg());
+                return next;
+            }
             // Row 20: VERIFYING_FINAL -> BLOCKED_ATTACK
             next = machine.fire(LivenessEvent.FINAL_PAD_ATTACK);
             audit.logTransition(LivenessState.VERIFYING_FINAL, next, "FINAL_PAD_ATTACK");
@@ -712,11 +727,16 @@ public final class LivenessSession {
      * and PAD re-scoring simultaneously.
      */
     private LivenessState processFrameDuringChallenge(FaceFrame frame, int padScore) {
-        // Check for hard PAD flag during challenge
-        LivenessPolicy.Band band = policy.route(padScore);
-        if (band == LivenessPolicy.Band.CLEAR_ATTACK) {
+        // Frontal gate for PAD evaluation during challenge:
+        // MiniFASNet is trained on frontal faces. When user turns head for TURN_LEFT/TURN_RIGHT,
+        // yaw exceeds poseMaxYawDeg and 2D texture degrades. Only evaluate PAD when face is frontal.
+        boolean isFrontalForPad = Math.abs(frame.yawDeg()) <= config.poseMaxYawDeg()
+                && Math.abs(frame.pitchDeg()) <= config.poseMaxPitchDeg();
+
+        if (isFrontalForPad) {
+            LivenessPolicy.Band band = policy.route(padScore);
             decisionEngine.recordWindow(band);
-            if (decisionEngine.isAttackPersisted()) {
+            if (band == LivenessPolicy.Band.CLEAR_ATTACK && decisionEngine.isAttackPersisted()) {
                 // Row 15: CHALLENGE_WAIT -> BLOCKED_ATTACK
                 LivenessState next = machine.fire(LivenessEvent.CHALLENGE_PAD_FLAG);
                 audit.logTransition(LivenessState.CHALLENGE_WAIT, next,

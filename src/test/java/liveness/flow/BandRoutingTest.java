@@ -155,4 +155,24 @@ class BandRoutingTest {
 
         assertFalse(attackDeclared, "4 windows is not enough when persistence is 5");
     }
+
+    @Test
+    void decisionEngineWindowResetsOnNonAttackBand() {
+        liveness.engine.DecisionEngine engine = new liveness.engine.DecisionEngine(policy, 3);
+        engine.recordWindow(LivenessPolicy.Band.CLEAR_ATTACK);
+        assertEquals(1, engine.consecutiveAttackWindows());
+        engine.recordWindow(LivenessPolicy.Band.CLEAR_ATTACK);
+        assertEquals(2, engine.consecutiveAttackWindows());
+
+        // Interrupted by UNCERTAIN or CLEAR_BONA_FIDE resets consecutive counter
+        engine.recordWindow(LivenessPolicy.Band.UNCERTAIN);
+        assertEquals(0, engine.consecutiveAttackWindows());
+        assertFalse(engine.isAttackPersisted());
+
+        engine.recordWindow(LivenessPolicy.Band.CLEAR_ATTACK);
+        assertEquals(1, engine.consecutiveAttackWindows());
+        engine.recordWindow(LivenessPolicy.Band.CLEAR_BONA_FIDE);
+        assertEquals(0, engine.consecutiveAttackWindows());
+        assertFalse(engine.isAttackPersisted());
+    }
 }

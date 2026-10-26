@@ -35,10 +35,24 @@ public final class CameraOnlyDevAdapter implements DeviceAdapter {
     @Override
     public FaceFrame captureFrame() throws DeviceException { return camera.captureFrame(); }
 
-    /** Fresh frame on purpose: the service stamps the request time before this call. */
+    /** Fresh frame on purpose: the service stamps the request time before this call.
+     * Waits up to 2.5s for a frontal face frame (yaw/pitch within 20 deg) so that completed
+     * turn challenges don't submit an in-flight profile frame as the final registration image.
+     */
     @Override
     public FaceFrame captureFinal(String boundTransactionId) throws DeviceException {
-        return camera.captureFrame();
+        long deadline = System.currentTimeMillis() + 2500;
+        FaceFrame best = null;
+        while (System.currentTimeMillis() < deadline) {
+            FaceFrame f = camera.captureFrame();
+            if (f != null && f.faceCount() == 1) {
+                best = f;
+                if (Math.abs(f.yawDeg()) <= 20.0 && Math.abs(f.pitchDeg()) <= 20.0) {
+                    return f;
+                }
+            }
+        }
+        return best != null ? best : camera.captureFrame();
     }
 
     @Override
