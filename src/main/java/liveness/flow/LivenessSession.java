@@ -80,7 +80,7 @@ public final class LivenessSession {
     private int retryCount;
     private BoundChallenge currentChallenge;
     /** Candidate value, not tuned: yaw limit for the quality gate while a TURN_* challenge is active. */
-    static final double TURN_YAW_LIMIT_DEG = 60.0;
+    static final double TURN_YAW_LIMIT_DEG = 85.0;
     private Attestation attestation;
     private FaceEmbedder faceEmbedder;      // optional; without it same-face fails closed (unless test-stubbed)
     private BlurWindowGate relativeBlurGate;   // null when relativeBlurEnabled is false; one per session, not thread-safe
@@ -280,8 +280,13 @@ public final class LivenessSession {
                 audit.logTransition(current, next, "QUALITY_DROPPED: " + qr.failureReason());
                 return next;
             }
-            // Already in POSITIONING -- stay there
-            return current;
+            if (current == LivenessState.CHALLENGE_WAIT && currentChallenge != null && frame.faceCount() == 1) {
+                // In challenge wait, subject is actively moving. Do not discard frames with a valid
+                // single face due to normal motion blur, box margin shift, or head angle during turn.
+            } else {
+                // Already in POSITIONING or other non-challenge state -- stay there
+                return current;
+            }
         }
 
         // --- 2b. Relative blur gate (additive, default off). Sessions with no valid full-frame sample skip it. ---
@@ -782,11 +787,15 @@ public final class LivenessSession {
         if (currentChallenge != null && detectChallengeAction(frame, currentChallenge.action())) {
             return currentChallenge.action();
         }
-        String[] actions = {"BLINK", "TURN_LEFT", "TURN_RIGHT", "LOOK_LEFT", "LOOK_RIGHT", "LOOK_UP", "LOOK_DOWN"};
-        for (String a : actions) {
-            if (currentChallenge != null && a.equals(currentChallenge.action())) continue;
-            if (detectChallengeAction(frame, a)) {
-                return a;
+        // Only report directly opposing wrong actions to prevent natural reflexes (such as
+        // blinking while turning) from erroneously resetting challenge progress or reporting wrong action.
+        if (currentChallenge != null) {
+            String exp = currentChallenge.action();
+            if ("TURN_LEFT".equals(exp) && detectChallengeAction(frame, "TURN_RIGHT")) {
+                return "TURN_RIGHT";
+            }
+            if ("TURN_RIGHT".equals(exp) && detectChallengeAction(frame, "TURN_LEFT")) {
+                return "TURN_LEFT";
             }
         }
         return null;
