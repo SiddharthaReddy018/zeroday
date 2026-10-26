@@ -217,16 +217,23 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
     }
 
     @Override public void onStateChanged(String state, String message) {
+        android.util.Log.i("MainActivity", "onStateChanged: " + state + " (msg=" + message + ")");
+        System.err.println("CALLBACK onStateChanged: " + state + " - " + message);
         runOnUiThread(() -> status.setText(state + (message == null ? "" : ": " + message)));
     }
     @Override public void onPreviewFrame(byte[] jpegBytes) { }
     @Override public void onChallengePrompt(String action, long timeoutMs) {
+        android.util.Log.i("MainActivity", "onChallengePrompt: " + action + " (" + timeoutMs + " ms)");
+        System.err.println("CALLBACK onChallengePrompt: " + action + " (" + timeoutMs + " ms)");
         runOnUiThread(() -> prompt.setText(action + " (" + (timeoutMs / 1000) + " s)"));
     }
     @Override public void onProgress(int framesProcessed, int framesNeeded) {
         runOnUiThread(() -> status.setText("Frames " + framesProcessed + " / " + framesNeeded));
     }
     @Override public void onResult(LivenessService.LivenessResult r) {
+        android.util.Log.i("MainActivity", "onResult: verdict=" + r.verdict() + ", failureReason=" + r.failureReason()
+                + ", retries=" + r.retryCount());
+        System.err.println("CALLBACK onResult: verdict=" + r.verdict() + ", failureReason=" + r.failureReason());
         runOnUiThread(() -> {
             prompt.setText("");
             result.setText("VERDICT: " + r.verdict() + (r.failureReason() == null ? "" : "\n" + r.failureReason())
@@ -234,6 +241,8 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
         });
     }
     @Override public void onError(String errorCode, String message) {
+        android.util.Log.e("MainActivity", "onError: " + errorCode + " - " + message);
+        System.err.println("CALLBACK onError: " + errorCode + " - " + message);
         runOnUiThread(() -> result.setText("ERROR " + errorCode + ": " + message));
     }
 

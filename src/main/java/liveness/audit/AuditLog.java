@@ -35,6 +35,7 @@ public final class AuditLog {
 
     /** Log a state transition. Accepts enum states for type safety. */
     public void logTransition(Object fromState, Object toState, String event) {
+        System.err.println("TRANSITION: from=" + fromState + " to=" + toState + " event=" + event);
         chain.append(new AuditEvent(
                 System.currentTimeMillis(),
                 "STATE",
