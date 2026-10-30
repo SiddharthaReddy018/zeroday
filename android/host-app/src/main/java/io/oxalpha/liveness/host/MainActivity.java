@@ -54,7 +54,7 @@ import liveness.service.LivenessService;
 public class MainActivity extends ComponentActivity implements LivenessCallback {
 
     // SHA-256 pins, verified locally with shasum on the staged files.
-    private static final String PAD_SHA = "fde20585635cae62ed1d41796f76b6f8bc4b92cd91ec1cf0f1bc6485d2d587a9";
+    private static final String PAD_SHA = "af2381b88f38769222ed93379e12444e2a50814575de1c46170de570c55a42b6";
     private static final String SFACE_SHA = "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79";
 
     private PreviewView previewView;
@@ -127,7 +127,7 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
         new Thread(() -> {
             try {
                 File yunet = copyAsset("face_detection_yunet.onnx");
-                byte[] pad = readAsset("MiniFASNetV2-SE-int8.onnx");
+                byte[] pad = readAsset("MiniFASNetV2-SE.onnx");
                 byte[] sface = readAsset("face_recognition_sface.onnx");
 
                 detector = new CompositeFaceDetector(new YuNetFaceDetector(yunet.toPath()), new MlKitFaceDetector());
@@ -140,42 +140,19 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                 ChallengeGenerator gen = new ChallengeGenerator(
                         java.util.Arrays.asList("BLINK", "TURN_LEFT", "TURN_RIGHT"),
                         Collections.emptyList());
-                // DEV: int8 model scores real faces 0-31; lower attackThreshold so a live face
-                // isn't immediately BLOCKED_ATTACK. attackPersistenceWindows raised to 5 to
-                // require a sustained run of sub-threshold frames before blocking.
-                // passThreshold kept at 70 (unchanged) — challenge still required for scores 3–69.
-                // DEV: int8 model scores real faces 0-31; lower attackThreshold so a live face
-                // isn't immediately BLOCKED_ATTACK. attackPersistenceWindows raised to 5 to
-                // require a sustained run of sub-threshold frames before blocking.
-                // passThreshold kept at 70 (unchanged) — challenge still required for scores 3-69.
-                // RetryRateLimiter: maxRetries=50 for dev session (in-memory, resets on app kill).
-                // VIDEO REPLAY FIX: A screen video that contains real head movement (yaw 5°→60°+)
-                // can satisfy the TURN_LEFT/TURN_RIGHT challenge because the PAD model (int8) scores
-                // high-quality screen replays at 90–100 (indistinguishable from live), and
-                // ACTION_CONFIRMED_DONE fires after just 2 qualifying action frames (default minActionFrames=2).
-                //
-                // Fix: raise minActionFrames 2→8 so the challenge requires a sustained run of
-                // 8 consecutive frames confirming the action. A pre-recorded video turning at a fixed
-                // rate satisfies 2 frames trivially but on a real head, yaw oscillates; the requirement
-                // for 8 sustained qualifying frames forces more temporal evidence.
-                //
-                // Also tighten loopHammingThreshold 6→4 to flag more subtle pHash similarities
-                // across the replay window (the default 6 was too lenient for smooth video).
-                //
-                // Security: minActionFrames=8 at 6fps ≈ 1.3s sustained turn — no usability regression
-                // for real users (a real head-turn takes ~0.5–1s to travel 15°+ and hold).
+                // ADR-018: FP32 model (ADR-017); thresholds at config defaults.
+                // minActionFrames/minTurnFrames=2 (camera ~6 fps). Challenge logic raises
+                // attacker cost only; it does not stop a video containing the action.
                 service = new LivenessService(LivenessConfig.builder()
                         .forceChallenge(true)
-                        .attackThreshold(3)
-                        .attackPersistenceWindows(5)
-                        .minActionFrames(8)
-                        .loopHammingThreshold(4)
+                        .minActionFrames(2)
+                        .minTurnFrames(2)
                         .build(), scorer, sameChecker, gen,
                         new RetryRateLimiter(5, 60_000), signer);
                 service.setFaceEmbedder(sfaceEmbedder);
 
-                List<String> sbiPkgs = sbiLauncher.resolveSbiPackages();
-                sbiAvailable = !sbiPkgs.isEmpty();
+                // ADR-018: SBI is out of scope; camera-only path always.
+                sbiAvailable = false;
 
                 runOnUiThread(() -> {
                     // DEV: use expectedIntervalMs=2000 (threshold = 4s) instead of default 500 (1s).
@@ -188,13 +165,9 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                     // pre-recorded-frame injection attack (which would show gaps of minutes/hours).
                     camera = new CameraXDeviceAdapter("front-camera", detector, 3, 5_000L, 2_000L);
                     controller.bind(getApplicationContext(), this, previewView, camera);
-                    if (sbiAvailable) {
-                        banner.setText("SBI MODE: " + sbiPkgs.get(0) + " (MOSIP Intent Flow)");
-                        banner.setBackgroundColor(Color.parseColor("#006600"));
-                    } else {
-                        banner.setText("DEV MODE: host camera only (no external SBI app).");
-                        banner.setBackgroundColor(Color.parseColor("#CC8800"));
-                    }
+                    banner.setText("DEV MODE: host camera only (no external SBI app).");
+                    banner.setBackgroundColor(Color.parseColor("#CC8800"));
+
                     status.setText("Ready. Face the front camera.");
                     start.setEnabled(true);
                 });
@@ -214,15 +187,7 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                 EnvironmentIntegrityChecker integrity = EnvironmentIntegrityChecker.forDevelopment(
                         new AndroidEnvProbe(getApplicationContext()), true);
                 DeviceAdapter device;
-                if (sbiAvailable) {
-                    CrossStreamBinder binder = new CrossStreamBinder(sameChecker, sfaceEmbedder, 10_000);
-                    SbiIntentDeviceAdapter sbi = new SbiIntentDeviceAdapter(
-                            sbiLauncher, binder, camera::latestFrame, new AndroidRgbDecoder(),
-                            SbiJwtVerifier.disabledForDevelopment(), "MOSIP_Registration_Client", "Registration", 5000);
-                    device = new AndroidDeviceAdapter(integrity, camera, sbi);
-                } else {
-                    device = new CameraOnlyDevAdapter(integrity, camera);
-                }
+                device = new CameraOnlyDevAdapter(integrity, camera);
                 service.performLiveness("dev-subject", device, "dev-operator",
                         LivenessService.WorkflowType.RESIDENT_REGISTRATION, this);
             } catch (RuntimeException e) {

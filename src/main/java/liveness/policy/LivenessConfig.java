@@ -48,6 +48,7 @@ public final class LivenessConfig {
     private final double yawLookThreshold;
     private final double pitchLookThreshold;
     private final int minActionFrames;
+    private final int minTurnFrames;
 
     // --- Frame sequence monitor ---
     private final int frameFreezePHashWindowSize;
@@ -93,6 +94,7 @@ public final class LivenessConfig {
         this.yawLookThreshold = b.yawLookThreshold;
         this.pitchLookThreshold = b.pitchLookThreshold;
         this.minActionFrames = b.minActionFrames;
+        this.minTurnFrames = b.minTurnFrames;
         this.frameFreezePHashWindowSize = b.frameFreezePHashWindowSize;
         this.freezeConsecutiveFrames = b.freezeConsecutiveFrames;
         this.loopSequenceLengthK = b.loopSequenceLengthK;
@@ -132,6 +134,7 @@ public final class LivenessConfig {
     public double yawLookThreshold() { return yawLookThreshold; }
     public double pitchLookThreshold() { return pitchLookThreshold; }
     public int minActionFrames() { return minActionFrames; }
+    public int minTurnFrames() { return minTurnFrames; }
     public int frameFreezePHashWindowSize() { return frameFreezePHashWindowSize; }
     public int loopWindowFrames() { return frameFreezePHashWindowSize; }
     public int freezeConsecutiveFrames() { return freezeConsecutiveFrames; }
@@ -187,6 +190,7 @@ public final class LivenessConfig {
         private double yawLookThreshold = 10.0;
         private double pitchLookThreshold = 20.0;
         private int minActionFrames = 1;
+        private int minTurnFrames = 1;
         private int frameFreezePHashWindowSize = 15;
         private int freezeConsecutiveFrames = 5;
         private int loopSequenceLengthK = 5;
@@ -224,6 +228,7 @@ public final class LivenessConfig {
         public Builder yawLookThreshold(double v)      { this.yawLookThreshold = v; return this; }
         public Builder pitchLookThreshold(double v)    { this.pitchLookThreshold = v; return this; }
         public Builder minActionFrames(int v)          { this.minActionFrames = v; return this; }
+        public Builder minTurnFrames(int v)            { this.minTurnFrames = v; return this; }
         public Builder frameFreezePHashWindowSize(int v) {
             this.frameFreezePHashWindowSize = v;
             return this;
@@ -252,6 +257,9 @@ public final class LivenessConfig {
          * @throws IllegalArgumentException if attackThreshold >= passThreshold (Section 5.1)
          */
         public LivenessConfig build() {
+            if (minTurnFrames < 1 || minTurnFrames > 10) {
+                throw new IllegalArgumentException("minTurnFrames must be within [1, 10], got: " + minTurnFrames);
+            }
             if (attackThreshold < 0 || attackThreshold > 100) {
                 throw new IllegalArgumentException("attackThreshold must be within [0, 100], got: " + attackThreshold);
             }
