@@ -36,12 +36,14 @@ public final class CameraOnlyDevAdapter implements DeviceAdapter {
     public FaceFrame captureFrame() throws DeviceException { return camera.captureFrame(); }
 
     /** Fresh frame on purpose: the service stamps the request time before this call.
-     * Waits up to 2.5s for a frontal face frame (yaw/pitch within 20 deg) so that completed
+     * Waits up to 4s for a frontal face frame (yaw/pitch within 20 deg) so that completed
      * turn challenges don't submit an in-flight profile frame as the final registration image.
+     * Extended from 2.5 s: on-device observation (2026-10-30) showed TURN_RIGHT finishing at
+     * yaw=-44° and the 2.5 s window expiring before the face returned to frontal.
      */
     @Override
     public FaceFrame captureFinal(String boundTransactionId) throws DeviceException {
-        long deadline = System.currentTimeMillis() + 2500;
+        long deadline = System.currentTimeMillis() + 4000;
         FaceFrame best = null;
         while (System.currentTimeMillis() < deadline) {
             FaceFrame f = camera.captureFrame();
@@ -51,6 +53,7 @@ public final class CameraOnlyDevAdapter implements DeviceAdapter {
                     return f;
                 }
             }
+            try { Thread.sleep(16); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
         }
         return best != null ? best : camera.captureFrame();
     }
