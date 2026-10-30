@@ -6,36 +6,45 @@ A prototype Face Liveness and Presentation Attack Detection engine for the MOSIP
 
 **How it works:** a passive PAD model scores every frame that passes the quality gate. If the passive score is clearly bona fide, the session proceeds without an active challenge. The active challenge (blink, turn, look) runs when the passive score is uncertain, or when a replay loop is suspected. The smile detector is implemented but smile is not issued as a challenge.
 
-**Host app:** the Android host app is DEV ONLY. It uses the host camera. If an SBI app is installed it detects it and switches to an SBI path with signature checking disabled; no real SBI or L0/L1 device was tested. It forces an active challenge on every session.
+**Host app:** the Android host app is DEV ONLY. It uses the host camera only. SBI/MDS hardware integration is out of scope (code implemented against the spec and unit-tested, never exercised on a device). It forces an active challenge on every session.
 
 ---
 
 ## Repository Layout & Clone Structure
 
-Per project organization standards, code and extended documentation are split across two dedicated repositories:
+Two GitHub repositories. Names on your disk may differ from the GitHub names.
+
+| GitHub repo | Purpose | Notes |
+|---|---|---|
+| `SiddharthaReddy018/zeroday` | Code, tests, `reports/`, and the deliverable docs in `docs/` | This repository. `main` is the submitted code. |
+| `SiddharthaReddy018/zerodayjunk-` | Working copies of project docs (HANDOFF files, MASTER_PLAN, PROGRESS-LOG, bench notes) | Not needed to build or run. The deliverable docs are copied into `docs/` here. |
 
 ```text
-MOSIP/
-├── face-liveness-pad/               # Code repository (zeroday / main)
-│   ├── src/main/java/               # Core engine, audit, crypto, device & Android bridge
-│   ├── src/test/java/               # Unit & integration test suites (651 tests at last run)
-│   ├── android/liveness-android/    # Android library module (CameraX, ONNX Runtime AAR, SBI glue)
-│   ├── flutter/liveness_ui/         # Flutter reference UI (screens not run on device) (cross-platform client)
-│   ├── ui-contract/                 # JSON schema contracts for engine-UI platform channel
-│   ├── pom.xml                      # Maven project definition (Java 11, Surefire, JaCoCo)
-│   ├── README-M4.md                 # Milestone 4 Android integration & benchmark report
-│   └── reports/                    # Test report, architecture, design notes, bench results
+zeroday/
+|-- src/main/java/        # Core engine, audit, crypto, device adapters (shared by desktop JVM and the Android host app)
+|-- src/test/java/        # Unit and integration tests
+|-- android/
+|   |-- liveness-android/ # Android library module (CameraX, ONNX Runtime, SBI glue)
+|   |-- host-app/         # DEV host app (camera only); compiles ../../src/main/java directly
+|   `-- bench-app/        # Latency bench app
+|-- flutter/liveness_ui/  # Flutter reference UI (screens not run on a device)
+|-- ui-contract/          # JSON schema for engine-UI events
+|-- reports/              # TEST_REPORT.md, architecture, bench results, design notes
+|-- docs/                 # TECHNICAL_DESIGN, UX_GUIDE, INTEGRATION_GUIDE, DEMO_SCRIPT, decisions (ADRs), AUDIT_TODO, licence-register
+|-- datasets/             # NOT in git: datasets/models/ holds the ONNX files for desktop tests
+|-- pom.xml               # Maven project (Java 11, Surefire, JaCoCo)
+`-- README-M4.md          # Milestone 4 Android integration notes
 ```
 
-> **Note:** The `docs/` folder in `face-liveness-pad` contains localized working copies and is strictly excluded from git tracking (`.gitignore`) to maintain repository hygiene.
+Git-ignored and created locally: `datasets/models/` (desktop tests) and `android/host-app/src/main/assets/` (host app: `MiniFASNetV2-SE.onnx`, `face_detection_yunet.onnx`, `face_recognition_sface.onnx`), plus `android/local.properties`.
 
 ---
 
 ## Architectural Highlights
 
 1. **Lightweight Neural PAD Scorer:**
-   - Uses the optimized INT8 quantized model (`MiniFASNetV2-SE-int8.onnx`, 612 KB; not stored in git, see "Model and dataset files").
-   - Low-latency edge execution: **Mean: 8.80 ms, p50: 8.63 ms, p95: 11.34 ms, p99: 12.60 ms** (far exceeding the MOSIP 200 ms target by >17x).
+   - Uses the FP32 model `MiniFASNetV2-SE.onnx` (1.82 MB; not stored in git, see "Model and dataset files"). The INT8 file is an unevaluated alternative and is not shipped (ADR-017).
+   - Latency (synthetic frames, not accuracy): on the Nothing A001 with FP32, PAD inference mean about 7 ms and per-frame p95 about 15 ms in a lockstep bench (ADR-017). The real face detector, SFace embedding, signing and UI are not included in those numbers. The older desktop-JVM INT8 figures are desktop only and say nothing about the phone.
    - Single-model decision architecture with strict `[0, 100]` probability score mapping and calibrated threshold bands (`PASS`, `UNCERTAIN`, `ATTACK`).
 
 2. **SBI & MDS Device Adapters:**
@@ -118,7 +127,7 @@ cd android
 ---
 
 ## Run the host app (DEV ONLY)
-The host app (`io.oxalpha.liveness.host`, Gradle module `:host-app`) is a development harness. It reads the phone camera directly. If an SBI app is installed it detects it and uses an SBI path with signature checking disabled; no real SBI or L0/L1 device was tested. It forces an active challenge on every session. Live observations so far come from one phone (Nothing A001, Android 15) and one person.
+The host app (`io.oxalpha.liveness.host`, Gradle module `:host-app`) is a development harness. It reads the phone camera directly. It always uses the host camera only (camera-only adapter). SBI/MDS hardware integration is out of scope; see Limitations. It forces an active challenge on every session. Live observations so far come from one phone (Nothing A001, Android 15) and one person.
 
 Prerequisites: Android SDK with `ANDROID_HOME` set, `adb` on PATH, and a phone with USB debugging enabled.
 ```bash
@@ -151,13 +160,15 @@ Bench outputs are written on the phone under
 - Only one phone, one lighting setup family and a few distances were measured. Other devices: not tested.
 - Device observations are from one phone and one person; they are not accuracy figures.
 - The host app forces a challenge on every session. The library default is passive-first, so host app runs do not show the passive-only path.
-- SBI signature verification is disabled in the development paths (SbiJwtVerifier.disabledForDevelopment). No real SBI or L0/L1 device was connected.
-- Presentation attack trials on the phone were run by the developer after the last engine fixes. Results are not logged in this repository and no detection rates are claimed.
-  Can be integrated in (if necessary ).
+- SBI/MDS hardware integration is out of scope for the submission. `SbiIntentBridge`, `SbiJwtVerifier`, `CrossStreamBinder` and `AndroidDeviceAdapter` are implemented against the spec and unit-tested only, never exercised on a device. Signature checking is disabled in development paths. The host app does not use them.
+- JavaFX desktop UI: not delivered. Flutter screens: not run on a device.
+- The challenge logic does not defeat a video that contains the requested action; it only raises the cost. Video replay is not defended.
+- Earlier presentation attack trials on the phone were run by the developer; results are not logged in this repository and no detection rates are claimed.
 - Cold-start DEVICE_FAILURE on the first Start after launch was seen in several captures; cause not verified. A later change tolerates one large first frame gap.
-- Turn direction was verified from yaw captures only (own right gives negative yaw, own left positive) and unit tests. No confirmed on-device challenge turn.
+- Turn direction was verified from yaw captures and unit tests. One on-device turn challenge was confirmed in the 2026-10-30 release run (N=3 runs, one phone, one person; see `reports/TEST_REPORT.md`).
 - Blur gate margin is thin on the test phone. Blur limit is 100 (Laplacian variance). Frames that passed in one good capture measured about 101 to 156. In two other captures live frames measured a median of about 63 to 73, every frame was rejected, and the session stayed on PENDING (POSITIONING). Cause (lens, angle, distance, focus, light) is not verified. Keep the lens clean and hold steady in good light when demonstrating. The threshold was not loosened because no attack data supports a lower value.
-- The latest clean release build was not re-verified on device after the last fixes; a live PASS was last observed on a debug build.
+- 2026-10-30 release build (FP32, commit e59a582), N=3 live runs on the Nothing A001: 1 SUCCESS, 2 BLOCKED_ATTACK; cause of the two blocks not established. Informal developer trial, one phone, one person; not a detection rate. Presentation-attack trials were not re-run after the FP32 change.
+- The host app still widens the timestamp-gap limit to about 4 s (dev workaround, ADR-018); this weakens the freeze/injection check.
 - Attack accuracy on real presentation attacks for the relative blur gate: not measured.
 - Detector concurrent cost, signing integration, UI mapping of reason strings, and the
   `:liveness-android` compile in the full app: not verified in the bench sessions.

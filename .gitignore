@@ -23,8 +23,7 @@ models/
 # Paywalled standards PDFs (§0)
 *.pdf
 
-# Local documentation working copies (not tracked)
-docs/
+# Local working copies (not tracked)
 *handoff*.md
 *master_plan*.md
 

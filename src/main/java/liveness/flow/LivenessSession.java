@@ -800,7 +800,9 @@ public final class LivenessSession {
      */
     /** Consecutive qualifying frames needed to confirm an action (HANDOFF-2 s5: blink needs several low-EAR frames). */
     private int requiredHitFrames(String action) {
-        return ("BLINK".equals(action) || "SMILE".equals(action)) ? config.minActionFrames() : 1;
+        if ("BLINK".equals(action) || "SMILE".equals(action)) return config.minActionFrames();
+        if ("TURN_LEFT".equals(action) || "TURN_RIGHT".equals(action)) return config.minTurnFrames();
+        return 1;
     }
 
     private String detectAnyAction(FaceFrame frame) {
