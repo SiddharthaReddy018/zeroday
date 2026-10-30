@@ -398,6 +398,27 @@ Three consecutive live resident registration trials on Nothing A001 phone highli
 
 ---
 
+## Oct 30 FP32 release run (one phone, one person, N=3)
+
+Informal developer trial, N=3 live runs, one phone, one person; not a detection rate and not an accuracy figure. Build: host app **release** (signed with the debug key, local demo only), branch `fix/t1-t2-t4`, commit e59a582, installed with `./gradlew :host-app:installRelease`. Device: Nothing A001, Android 15. Capture: 2026-10-30, about 23:45 IST, user-run logcat. The raw log is not stored in this repository. No attack presentations were made in this capture. Whether runs 2 and 3 were the user's live face is not recorded; the challenge type issued, lighting and glasses are not recorded.
+
+Config in this run: FP32 `MiniFASNetV2-SE.onnx`, default `attackThreshold` 30 and `attackPersistenceWindows` 3, `forceChallenge` true, `minChallenges` 2 (log shows `min=2`), `minActionFrames` 2, `minTurnFrames` 2, timestamp-gap limit still widened (ADR-018 item 5).
+
+| Run | Final state | What the log shows |
+|---|---|---|
+| 1 | SUCCESS | PAD scores 97-100 on all scored frames (INT8 had given 0-31). First challenge timed out (yaw stayed near 3 deg), RETRY 1/3 granted. Then two actions confirmed (yaw about 49 and about -42), FINAL_PAD 100, COMMIT_CHECKS_PASS. A soft LOOP_REPLAY flag fired on the live face; it only forced a challenge. |
+| 2 | BLOCKED_ATTACK | Scores 100 for about 12 frames, then 85, 31, 19, 1, 10 with yaw flat (about -1 to -4 deg); `CHALLENGE_PAD_FLAG score=10`. Cause not established. |
+| 3 | BLOCKED_ATTACK | Scores 30, 10, 29, 2, 2, 12, 12 from the first frame; CLEAR_ATTACK after the persistence window. Cause not established. |
+
+Consequences for claims:
+- FP32 live PAD scores were high in run 1 and low in runs 2 and 3. Reliability of live acceptance is NOT established; two of three runs were blocked. Possible false rejects are not measured. No BPCER is claimed.
+- The challenge requires two confirmed actions by default (`min=2`), so a single stray action does not pass. A video containing two requested actions could still pass. Video replay is NOT defended.
+- A turn challenge was confirmed on device in run 1 (this supersedes "no confirmed on-device challenge turn" in earlier text).
+- Earlier Oct 30 device work (two release builds reaching TURN_RIGHT then SUCCESS; a head-movement video replay passing on the second attempt; a camera-permission failure; a timestamp-gap failure) is evidenced by commit messages only; no logs are stored.
+- The printed-photo, second-screen and replay trials (A5) were NOT re-run after the FP32 change. Not verified.
+
+---
+
 ## Limitations
 
 - BPCER is measured on still images (ONOT synthetic ICAO set); it is not a live-presentation BPCER.
@@ -408,3 +429,6 @@ Three consecutive live resident registration trials on Nothing A001 phone highli
 - Latency figures come from a desktop JVM with synthetic input unless stated otherwise; on-phone latency is not measured (Part 2 X6).
 - Injection-attack numbers are synthetic, mechanism-level results; freeze and loop thresholds are not tuned on real cameras (Part 2 X13).
 - Same-face calibration used synthetic still pairs and the threshold was selected on the same pairs (ADR-012).
+- Video replay is a known uncovered attack species (not in the evaluation set). The challenge logic does not defeat a video that contains the requested actions; it only raises the cost.
+- Not validated on device: attack presentations after the FP32 change (A5), live BPCER, a second phone, SBI/MDS hardware (out of scope, ADR-018), the Flutter screens, the JavaFX desktop UI (not delivered).
+- Test counts above (651) are from the earlier documented run. A later user-run `mvn test` on 2026-10-30 reported 654 run, 0 failures, 0 errors, 4 skipped (651 plus 3 new `MinTurnFramesConfigTest` tests); the table at the top was not regenerated.
