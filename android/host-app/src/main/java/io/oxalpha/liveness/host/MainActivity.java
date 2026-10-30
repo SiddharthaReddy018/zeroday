@@ -161,7 +161,15 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                 sbiAvailable = !sbiPkgs.isEmpty();
 
                 runOnUiThread(() -> {
-                    camera = new CameraXDeviceAdapter("front-camera", detector);
+                    // DEV: use expectedIntervalMs=2000 (threshold = 4s) instead of default 500 (1s).
+                    // Root cause: after VERIFYING_FINAL (SFace embedding ~1-2s on this device),
+                    // the FrameSequenceMonitor TIMESTAMP_GAP check fires on the retry's first frame
+                    // because the gap between the last buffered frame and the first retry frame exceeds
+                    // 2 * defaultExpectedInterval (1000ms). 4s threshold still catches real injection
+                    // attacks while accommodating SFace latency on mid-range hardware.
+                    // Security: TIMESTAMP_GAP threshold of 4s > any real camera gap but << any
+                    // pre-recorded-frame injection attack (which would show gaps of minutes/hours).
+                    camera = new CameraXDeviceAdapter("front-camera", detector, 3, 5_000L, 2_000L);
                     controller.bind(getApplicationContext(), this, previewView, camera);
                     if (sbiAvailable) {
                         banner.setText("SBI MODE: " + sbiPkgs.get(0) + " (MOSIP Intent Flow)");
