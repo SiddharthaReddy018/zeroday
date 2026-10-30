@@ -144,12 +144,17 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                 // isn't immediately BLOCKED_ATTACK. attackPersistenceWindows raised to 5 to
                 // require a sustained run of sub-threshold frames before blocking.
                 // passThreshold kept at 70 (unchanged) — challenge still required for scores 3–69.
+                // DEV: int8 model scores real faces 0-31; lower attackThreshold so a live face
+                // isn't immediately BLOCKED_ATTACK. attackPersistenceWindows raised to 5 to
+                // require a sustained run of sub-threshold frames before blocking.
+                // passThreshold kept at 70 (unchanged) — challenge still required for scores 3-69.
+                // RetryRateLimiter: maxRetries=50 for dev session (in-memory, resets on app kill).
                 service = new LivenessService(LivenessConfig.builder()
                         .forceChallenge(true)
                         .attackThreshold(3)
                         .attackPersistenceWindows(5)
                         .build(), scorer, sameChecker, gen,
-                        new RetryRateLimiter(5, 60_000), signer);
+                        new RetryRateLimiter(50, 60_000), signer);
                 service.setFaceEmbedder(sfaceEmbedder);
 
                 List<String> sbiPkgs = sbiLauncher.resolveSbiPackages();
