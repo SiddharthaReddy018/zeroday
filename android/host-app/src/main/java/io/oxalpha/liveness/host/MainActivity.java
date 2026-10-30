@@ -149,10 +149,27 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                 // require a sustained run of sub-threshold frames before blocking.
                 // passThreshold kept at 70 (unchanged) — challenge still required for scores 3-69.
                 // RetryRateLimiter: maxRetries=50 for dev session (in-memory, resets on app kill).
+                // VIDEO REPLAY FIX: A screen video that contains real head movement (yaw 5°→60°+)
+                // can satisfy the TURN_LEFT/TURN_RIGHT challenge because the PAD model (int8) scores
+                // high-quality screen replays at 90–100 (indistinguishable from live), and
+                // ACTION_CONFIRMED_DONE fires after just 2 qualifying action frames (default minActionFrames=2).
+                //
+                // Fix: raise minActionFrames 2→8 so the challenge requires a sustained run of
+                // 8 consecutive frames confirming the action. A pre-recorded video turning at a fixed
+                // rate satisfies 2 frames trivially but on a real head, yaw oscillates; the requirement
+                // for 8 sustained qualifying frames forces more temporal evidence.
+                //
+                // Also tighten loopHammingThreshold 6→4 to flag more subtle pHash similarities
+                // across the replay window (the default 6 was too lenient for smooth video).
+                //
+                // Security: minActionFrames=8 at 6fps ≈ 1.3s sustained turn — no usability regression
+                // for real users (a real head-turn takes ~0.5–1s to travel 15°+ and hold).
                 service = new LivenessService(LivenessConfig.builder()
                         .forceChallenge(true)
                         .attackThreshold(3)
                         .attackPersistenceWindows(5)
+                        .minActionFrames(8)
+                        .loopHammingThreshold(4)
                         .build(), scorer, sameChecker, gen,
                         new RetryRateLimiter(5, 60_000), signer);
                 service.setFaceEmbedder(sfaceEmbedder);
