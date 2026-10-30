@@ -256,7 +256,41 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
     @Override public void onError(String errorCode, String message) {
         android.util.Log.e("MainActivity", "onError: " + errorCode + " - " + message);
         System.err.println("CALLBACK onError: " + errorCode + " - " + message);
-        runOnUiThread(() -> result.setText("ERROR " + errorCode + ": " + message));
+        runOnUiThread(() -> {
+            result.setText("ERROR " + errorCode + ": " + message);
+            // ENGINE_FAILURE can be caused by Android revoking the one-time camera permission
+            // mid-session. Re-check the permission and rebind the camera so the user can
+            // tap Start again without force-stopping the app.
+            if ("ENGINE_FAILURE".equals(errorCode)) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    // Permission still held — camera may have closed; rebind.
+                    controller.unbind();
+                    camera = new CameraXDeviceAdapter("front-camera", detector);
+                    controller.bind(getApplicationContext(), this, previewView, camera);
+                    start.setEnabled(true);
+                    status.setText("Camera reconnected. Tap Start.");
+                } else {
+                    // Permission was revoked — re-request it.
+                    status.setText("Camera permission lost. Re-requesting...");
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{Manifest.permission.CAMERA}, 1);
+                }
+            }
+        });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // If the camera permission was granted while the app was paused (e.g. user tapped
+        // "Allow" in the OS dialog), re-initialise the engine so the user doesn't have to
+        // restart the app.
+        if (service == null
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            initEngine();
+        }
     }
 
     @Override
