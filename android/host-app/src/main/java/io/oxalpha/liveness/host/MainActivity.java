@@ -154,7 +154,7 @@ public class MainActivity extends ComponentActivity implements LivenessCallback 
                         .attackThreshold(3)
                         .attackPersistenceWindows(5)
                         .build(), scorer, sameChecker, gen,
-                        new RetryRateLimiter(50, 60_000), signer);
+                        new RetryRateLimiter(5, 60_000), signer);
                 service.setFaceEmbedder(sfaceEmbedder);
 
                 List<String> sbiPkgs = sbiLauncher.resolveSbiPackages();
